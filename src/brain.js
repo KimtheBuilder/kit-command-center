@@ -3,6 +3,7 @@
 // are answered by Claude with a live snapshot of the business state.
 // Voice-ready output preserved: { answer, detail, recommendation, next_action }.
 const store = require('./store');
+const brandKit = require('./brandKit');
 const rules = require('./rules');
 const cc = require('./modules/commandCenter');
 
@@ -35,7 +36,9 @@ Context: Kim the Builder is a business funding strategist and credit educator (A
 You receive a live JSON snapshot of her business state. Answer from the data. If the data is missing, say so plainly — never invent numbers. Be direct about problems.
 
 Respond with ONLY a JSON object, no markdown fences, no preamble:
-{"answer": "one or two spoken-length sentences", "detail": "supporting specifics or null", "recommendation": "the move to make or null", "next_action": "one concrete next step or null"}`;
+{"answer": "one or two spoken-length sentences", "detail": "supporting specifics or null", "recommendation": "the move to make or null", "next_action": "one concrete next step or null"}
+
+` + brandKit.promptBlock();
 
 async function ask(text, actor) {
   if (!enabled()) return null;

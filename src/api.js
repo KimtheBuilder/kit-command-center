@@ -28,6 +28,10 @@ const ok = (res, data) => res.json({ ok: true, data });
 const fail = (res, err) => res.status(400).json({ ok: false, error: err.message || String(err) });
 const wrap = fn => async (req, res) => { try { ok(res, await fn(req)); } catch (e) { fail(res, e); } };
 
+// ---- KTB Brand Kit (complete design system, machine-readable)
+const brandKit = require('./brandKit');
+router.get('/brand', (req, res) => res.json({ ok: true, data: brandKit.BRAND }));
+
 // ---- KTB Agent Stack bridge diagnostics
 const stackBridge = require('./stackBridge');
 router.get('/stack/status', async (req, res) => { res.json({ ok: true, data: await stackBridge.status() }); });
