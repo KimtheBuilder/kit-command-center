@@ -69,7 +69,12 @@ function setArc(state, msg) { // idle | listening | thinking | speaking
 }
 (async () => {
   try { const s = await api('/voice/status'); elAvailable = s.enabled; } catch (e) { elAvailable = false; }
-  kitStatus.textContent = elAvailable ? 'KIT online. Voice ready.' : 'KIT online. Voice: set ELEVENLABS_API_KEY to enable KIT’s voice (browser fallback active).';
+  let line = elAvailable ? 'KIT online. Voice ready.' : 'KIT online. Voice: set ELEVENLABS_API_KEY to enable KIT’s voice (browser fallback active).';
+  try {
+    const st = await api('/stack/status');
+    if (st.configured) line += st.reachable ? ' Agent Stack linked — ' + st.tools + ' tools.' : ' Agent Stack UNREACHABLE: ' + (st.hint || st.error);
+  } catch (e) { /* diagnostics never block boot */ }
+  kitStatus.textContent = line;
 })();
 $('#voiceToggle').addEventListener('change', e => { voiceEnabled = e.target.checked; });
 
