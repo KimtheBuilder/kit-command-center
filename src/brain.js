@@ -47,6 +47,8 @@ async function ask(text, actor) {
       if (stack.enabled()) {
         const [dash, cal] = await Promise.allSettled([stack.ceoDashboard(), stack.contentCalendar()]);
         snap.agent_stack = {
+          agents: ['Content Calendar', 'Coaching Call Repurposing (clips, captions, email teasers)', 'CEO Dashboard (business metrics)', 'Email Nurture Sequences', 'SOP Library', 'Website Governance'],
+          note: 'These six KTB Agent Stack agents are connected live inside KIT. Kim can ask for the content calendar, CEO dashboard, SOPs, or website status by name.',
           ceo_dashboard: dash.status === 'fulfilled' ? dash.value : 'unavailable',
           content_calendar: cal.status === 'fulfilled' ? cal.value : 'unavailable'
         };

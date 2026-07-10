@@ -99,7 +99,22 @@ async function handle(text, actor) {
       }
       if (t.includes('ceo dashboard') || t.includes('business metrics') || t.includes('revenue numbers')) {
         const m = await stack.ceoDashboard();
-        return respond('CEO dashboard pulled from the Agent Stack.', summarizeStack(m, 500), null, 'Ask "give me the hard truth" to cross-check these against KIT benchmarks.', { source: 'ktb_agent_stack', metrics: m });
+        const metrics = (m && m.metrics) || [];
+        const p = (m && m.pipeline) || {};
+        const bits = [];
+        if (p.content) bits.push('Content pipeline: ' + p.content.ideas + ' ideas, ' + p.content.drafted + ' drafted, ' + p.content.pending_approval + ' awaiting your approval, ' + p.content.published + ' published');
+        if (p.repurposing) bits.push('Repurposing: ' + p.repurposing.calls + ' calls ingested, ' + p.repurposing.clip_candidates + ' clip candidates, ' + p.repurposing.assets + ' assets generated');
+        if (p.website) bits.push('Website governance: ' + p.website.pages + ' pages, ' + p.website.open_findings + ' open findings');
+        if (p.nurture) bits.push('Nurture: ' + p.nurture.sequences + ' sequences, ' + p.nurture.emails + ' emails');
+        if (p.sops) bits.push('SOP library: ' + p.sops.active + ' active');
+        const mline = metrics.length ? metrics.slice(0, 6).map(x => (x.name || x.metric || 'metric') + ': ' + x.value).join(', ') : '';
+        const hasData = metrics.length > 0 || bits.some(b => /[1-9]/.test(b));
+        return respond(
+          hasData ? 'CEO dashboard, live from the Agent Stack.' : 'The Agent Stack is connected, but its CEO dashboard is empty — no business data has been recorded there yet.',
+          (mline ? 'Metrics — ' + mline + '. ' : '') + bits.join('. ') || null,
+          hasData ? null : 'Record your first numbers — revenue, leads, enrollments — in the KTB Operator Console, or tell Claude to record a metric through the Agent Stack connector.',
+          'KIT KPIs and Agent Stack metrics are separate books — pick one as the source of truth or log weekly in both.',
+          { source: 'ktb_agent_stack', metrics: m });
       }
       if (t.includes('sop')) {
         const s2 = await stack.sops();
