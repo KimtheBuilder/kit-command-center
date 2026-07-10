@@ -75,6 +75,7 @@ async function rpc(method, params, timeoutMs) {
   try {
     return await rawRpc(method, params, timeoutMs);
   } catch (e) {
+    if (e.status === 429) throw e; // rate-limited: retrying makes it worse
     // Retry once after a fresh initialize — covers session-required servers
     // and Render free-tier cold starts.
     _initialized = false; _sessionId = null;
@@ -97,8 +98,10 @@ async function callTool(name, args) {
 }
 
 // Diagnostic: one call that reports exactly what is or isn't working.
+let _statusCache = null, _statusAt = 0;
 async function status() {
   if (!enabled()) return { configured: false, hint: 'Set KTB_STACK_MCP_URL in Render → Environment.' };
+  if (_statusCache && Date.now() - _statusAt < 60000) return _statusCache;
   const report = { configured: true, url_host: STACK_URL.replace(/^https?:\/\//, '').split('/')[0], reachable: false, tools: 0, error: null, hint: null };
   try {
     const tools = await listTools();
@@ -110,8 +113,10 @@ async function status() {
     if (e.status === 401 || e.status === 403) report.hint = 'The token in KTB_STACK_MCP_URL is wrong. Copy the exact connector URL you used in Claude.ai.';
     else if (e.status === 404) report.hint = 'URL path is wrong — it must end with /mcp/YOUR-TOKEN, no trailing slash.';
     else if (String(e.message).includes('abort')) report.hint = 'Timed out — the Agent Stack may be asleep on Render free tier. Open its dashboard URL to wake it, wait 60s, retry.';
+    else if (e.status === 429) report.hint = 'The Agent Stack is rate-limiting requests. It recovers on its own — wait about a minute and refresh.';
     else report.hint = 'Check the full URL for typos, then retry once the Agent Stack is awake.';
   }
+  _statusCache = report; _statusAt = Date.now();
   return report;
 }
 
