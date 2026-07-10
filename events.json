@@ -1,0 +1,65 @@
+[
+  {
+    "id": "evt_mre80250rgna5",
+    "created_at": "2026-07-10T00:51:39.348Z",
+    "actor": "system",
+    "action": "agent.registered",
+    "entity": "agent",
+    "entity_id": "agt_mre8024ztclxh",
+    "detail": "Command Center"
+  },
+  {
+    "id": "evt_mre80250nn8z8",
+    "created_at": "2026-07-10T00:51:39.348Z",
+    "actor": "system",
+    "action": "agent.registered",
+    "entity": "agent",
+    "entity_id": "agt_mre80250uah84",
+    "detail": "Platform Audit & Growth Agent"
+  },
+  {
+    "id": "evt_mre80251fyr42",
+    "created_at": "2026-07-10T00:51:39.349Z",
+    "actor": "system",
+    "action": "agent.registered",
+    "entity": "agent",
+    "entity_id": "agt_mre80251erhca",
+    "detail": "Website & Funnel Governance"
+  },
+  {
+    "id": "evt_mre802516vrcb",
+    "created_at": "2026-07-10T00:51:39.349Z",
+    "actor": "system",
+    "action": "agent.registered",
+    "entity": "agent",
+    "entity_id": "agt_mre80251lgc4u",
+    "detail": "Cinematic Studio"
+  },
+  {
+    "id": "evt_mre80251pvmv0",
+    "created_at": "2026-07-10T00:51:39.349Z",
+    "actor": "system",
+    "action": "agent.registered",
+    "entity": "agent",
+    "entity_id": "agt_mre80251i6dfc",
+    "detail": "Workflow & Nurture Automation"
+  },
+  {
+    "id": "evt_mre80252pvjfj",
+    "created_at": "2026-07-10T00:51:39.350Z",
+    "actor": "system",
+    "action": "cinematic.provider_registered",
+    "entity": "provider",
+    "entity_id": "prv_mre80252cky2c",
+    "detail": "Higgsfield"
+  },
+  {
+    "id": "evt_mre802524knkz",
+    "created_at": "2026-07-10T00:51:39.350Z",
+    "actor": "system",
+    "action": "cinematic.provider_registered",
+    "entity": "provider",
+    "entity_id": "prv_mre80252wmd4t",
+    "detail": "Kling AI"
+  }
+]

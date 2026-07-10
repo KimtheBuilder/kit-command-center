@@ -1,0 +1,13 @@
+{
+  "name": "kit-command-center",
+  "version": "1.0.0",
+  "description": "KIT - Kim the Builder's JARVIS-style business operating system. Command center, specialized agents, KPI intelligence, remote MCP connector for Claude.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": { "node": ">=18" },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}

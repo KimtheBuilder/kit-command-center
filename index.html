@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>KIT — Command Center · Kim the Builder 🛠️</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,700;1,500&family=DM+Sans:wght@300;400;500;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<div class="shell">
+
+  <nav class="sidenav">
+    <div class="brand">
+      <div class="brand-mark">🛠️</div>
+      <div>
+        <div class="brand-name">KIT</div>
+        <div class="brand-sub">Command Center</div>
+      </div>
+    </div>
+    <div class="nav-group-label">Operate</div>
+    <button class="nav-item active" data-view="overview">Operator Desk</button>
+    <button class="nav-item" data-view="tasks">Task Board</button>
+    <button class="nav-item" data-view="approvals">Approvals <span class="nav-badge" id="approvalBadge"></span></button>
+    <button class="nav-item" data-view="kpis">KPIs &amp; Benchmarks</button>
+    <div class="nav-group-label">Agents</div>
+    <button class="nav-item" data-view="growth">Growth Audit</button>
+    <button class="nav-item" data-view="governance">Site &amp; Funnel Governance</button>
+    <button class="nav-item" data-view="cinematic">Cinematic Studio</button>
+    <button class="nav-item" data-view="nurture">Nurture &amp; Workflows</button>
+    <div class="nav-group-label">Intelligence</div>
+    <button class="nav-item" data-view="reviews">Business Reviews</button>
+    <button class="nav-item" data-view="activity">Activity Log</button>
+    <div class="nav-foot">
+      <div class="nav-foot-line">Kim the Builder LLC</div>
+      <div class="nav-foot-line dim">Owner approval gates active</div>
+    </div>
+  </nav>
+
+  <main class="main">
+
+    <div class="console">
+      <div class="arc" id="arcRing" title="KIT status">
+        <svg viewBox="0 0 100 100" class="arc-svg" aria-hidden="true">
+          <circle class="ring r1" cx="50" cy="50" r="46" />
+          <circle class="ring r2" cx="50" cy="50" r="37" />
+          <circle class="ring r3" cx="50" cy="50" r="28" />
+          <g class="ticks">
+            <line x1="50" y1="4" x2="50" y2="12"/><line x1="96" y1="50" x2="88" y2="50"/>
+            <line x1="50" y1="96" x2="50" y2="88"/><line x1="4" y1="50" x2="12" y2="50"/>
+          </g>
+          <circle class="arc-core-svg" cx="50" cy="50" r="10" />
+        </svg>
+      </div>
+      <input id="commandInput" type="text" placeholder='Talk to KIT — “weekly operator summary” · “hard truth” · “should I run more webinars?” · “what’s the bottleneck?”' autocomplete="off" />
+      <button id="micBtn" class="btn mic" title="Hold a conversation with KIT">🎙</button>
+      <button id="commandSend" class="btn gold">Ask</button>
+      <label class="check voice-toggle" title="KIT speaks replies aloud"><input type="checkbox" id="voiceToggle" /> Voice</label>
+    </div>
+    <div class="kit-status" id="kitStatus">KIT online.</div>
+    <div id="consoleReply" class="console-reply hidden">
+      <div class="reply-answer" id="replyAnswer"></div>
+      <div class="reply-detail" id="replyDetail"></div>
+      <div class="reply-row">
+        <div class="reply-rec" id="replyRec"></div>
+        <div class="reply-next" id="replyNext"></div>
+      </div>
+    </div>
+
+    <!-- ============ OVERVIEW ============ -->
+    <section class="view" id="view-overview">
+      <div class="grid-2">
+        <div class="panel truth-panel">
+          <div class="panel-head"><h2>The Hard Truth</h2><span class="panel-tag">no sugar-coating</span></div>
+          <div id="hardTruths" class="truth-list"></div>
+        </div>
+        <div class="stack">
+          <div class="panel">
+            <div class="panel-head"><h2>Next Best Actions</h2></div>
+            <div id="nextActions" class="action-list"></div>
+          </div>
+          <div class="grid-2 tight">
+            <div class="panel verdict-panel" id="scalePanel">
+              <div class="panel-head"><h2>Scale Readiness</h2></div>
+              <div class="verdict" id="scaleVerdict">—</div>
+              <div class="verdict-reason" id="scaleReason"></div>
+            </div>
+            <div class="panel verdict-panel" id="webinarPanel">
+              <div class="panel-head"><h2>Webinar Cadence</h2></div>
+              <div class="verdict" id="webinarVerdict">—</div>
+              <div class="verdict-reason" id="webinarReason"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="grid-3">
+        <div class="panel"><div class="panel-head"><h2>Execution Pulse</h2></div><div id="pulse" class="pulse-grid"></div></div>
+        <div class="panel"><div class="panel-head"><h2>KPI Flags</h2></div><div id="kpiFlags"></div></div>
+        <div class="panel"><div class="panel-head"><h2>Recent Decisions</h2></div><div id="recentDecisions" class="mini-list"></div></div>
+      </div>
+    </section>
+
+    <!-- ============ TASKS ============ -->
+    <section class="view hidden" id="view-tasks">
+      <div class="panel">
+        <div class="panel-head"><h2>New Task</h2></div>
+        <div class="form-row">
+          <input id="taskTitle" placeholder="Task title" />
+          <select id="taskAgent">
+            <option value="command_center">Command Center</option>
+            <option value="growth_audit">Growth Audit</option>
+            <option value="governance">Governance</option>
+            <option value="cinematic_studio">Cinematic Studio</option>
+            <option value="nurture_automation">Nurture Automation</option>
+          </select>
+          <select id="taskImpact"><option value="1">Impact 1</option><option value="2">Impact 2</option><option value="3" selected>Impact 3</option><option value="4">Impact 4</option><option value="5">Impact 5</option></select>
+          <select id="taskUrgency"><option value="1">Urgency 1</option><option value="2">Urgency 2</option><option value="3" selected>Urgency 3</option><option value="4">Urgency 4</option><option value="5">Urgency 5</option></select>
+          <label class="check"><input type="checkbox" id="taskRevenue" /> Revenue-linked</label>
+          <button class="btn gold" id="taskCreate">Add task</button>
+        </div>
+      </div>
+      <div id="taskBoard" class="board"></div>
+    </section>
+
+    <!-- ============ APPROVALS ============ -->
+    <section class="view hidden" id="view-approvals">
+      <div class="panel">
+        <div class="panel-head"><h2>Approval Queue</h2><span class="panel-tag">only you can approve</span></div>
+        <div id="approvalList"></div>
+      </div>
+    </section>
+
+    <!-- ============ KPIS ============ -->
+    <section class="view hidden" id="view-kpis">
+      <div class="panel">
+        <div class="panel-head"><h2>Log a KPI</h2></div>
+        <div class="form-row">
+          <select id="kpiMetric"></select>
+          <input id="kpiValue" type="number" step="any" placeholder="Value (rates as 0.35)" />
+          <input id="kpiPeriod" type="date" />
+          <button class="btn gold" id="kpiLog">Record</button>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2>KPI Health Board</h2><span class="panel-tag">vs benchmarks</span></div>
+        <div id="kpiBoard" class="kpi-grid"></div>
+      </div>
+    </section>
+
+    <!-- ============ GROWTH ============ -->
+    <section class="view hidden" id="view-growth">
+      <div class="panel">
+        <div class="panel-head"><h2>Open a Growth Audit</h2></div>
+        <div class="form-row">
+          <select id="growthProperty"></select>
+          <button class="btn gold" id="growthAuditCreate">Open audit</button>
+          <button class="btn" id="whatMattersBtn">What should matter this week?</button>
+        </div>
+        <div id="whatMatters" class="mini-report hidden"></div>
+      </div>
+      <div class="grid-2">
+        <div class="panel"><div class="panel-head"><h2>Open Audits</h2></div><div id="growthAudits" class="mini-list"></div></div>
+        <div class="panel"><div class="panel-head"><h2>Top Opportunities</h2><span class="panel-tag">by impact score</span></div><div id="opportunities" class="mini-list"></div></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2>Add Finding</h2></div>
+        <div class="form-row">
+          <input id="findingAudit" placeholder="Audit ID (aud_…)" />
+          <input id="findingTitle" placeholder="Finding" class="wide" />
+          <select id="findingSeverity"><option>critical</option><option>high</option><option selected>medium</option><option>low</option></select>
+          <input id="findingScore" type="number" min="1" max="10" placeholder="Impact 1-10" />
+          <button class="btn gold" id="findingAdd">Add</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ GOVERNANCE ============ -->
+    <section class="view hidden" id="view-governance">
+      <div class="panel">
+        <div class="panel-head"><h2>Page Audit</h2><span class="panel-tag">drafts only — never publishes</span></div>
+        <div class="form-row">
+          <input id="govUrl" placeholder="Page URL" class="wide" />
+          <select id="govStage"><option>traffic</option><option>optin</option><option>nurture</option><option>sales</option><option>checkout</option><option>thankyou</option></select>
+          <button class="btn gold" id="govAuditCreate">Open page audit</button>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2>Draft Revision Queue</h2></div>
+        <div class="form-row">
+          <input id="revUrl" placeholder="Page URL" />
+          <input id="revSection" placeholder="Section (hero, CTA…)" />
+          <input id="revCopy" placeholder="Proposed copy" class="wide" />
+          <button class="btn gold" id="revDraft">Draft revision</button>
+        </div>
+        <div id="revisions" class="mini-list"></div>
+      </div>
+    </section>
+
+    <!-- ============ CINEMATIC ============ -->
+    <section class="view hidden" id="view-cinematic">
+      <div class="panel">
+        <div class="panel-head"><h2>New Cinematic Project</h2></div>
+        <div class="form-row">
+          <input id="cinTitle" placeholder="Project title" class="wide" />
+          <input id="cinOffer" placeholder="Offer (e.g. Legacy Academy)" />
+          <select id="cinChannel"><option>instagram_reel</option><option>webinar_promo</option><option>youtube_short</option><option>youtube_long</option><option>website_hero</option><option>instagram_story</option></select>
+          <button class="btn gold" id="cinCreate">Create</button>
+        </div>
+      </div>
+      <div class="panel"><div class="panel-head"><h2>Projects</h2><span class="panel-tag">brief → storyboard → production → ready</span></div><div id="cinProjects" class="mini-list"></div></div>
+    </section>
+
+    <!-- ============ NURTURE ============ -->
+    <section class="view hidden" id="view-nurture">
+      <div class="panel">
+        <div class="panel-head"><h2>Register GHL Workflow</h2></div>
+        <div class="form-row">
+          <input id="wfName" placeholder="Workflow name" class="wide" />
+          <input id="wfTrigger" placeholder="Trigger" />
+          <select id="wfStage"><option>optin</option><option selected>nurture</option><option>sales</option><option>onboarding</option></select>
+          <button class="btn gold" id="wfRegister">Register</button>
+          <button class="btn" id="wfAudit">Run QA audit</button>
+        </div>
+      </div>
+      <div class="grid-2">
+        <div class="panel"><div class="panel-head"><h2>Workflow Inventory</h2></div><div id="wfInventory" class="mini-list"></div></div>
+        <div class="panel"><div class="panel-head"><h2>Open QA Audits</h2></div><div id="wfAudits" class="mini-list"></div></div>
+      </div>
+    </section>
+
+    <!-- ============ REVIEWS ============ -->
+    <section class="view hidden" id="view-reviews">
+      <div class="panel">
+        <div class="panel-head"><h2>Business Review Engine</h2></div>
+        <div class="form-row" id="reviewButtons"></div>
+      </div>
+      <div class="panel"><div class="panel-head"><h2>Latest Review</h2></div><pre id="reviewOutput" class="review-output">Run a review to see it here.</pre></div>
+    </section>
+
+    <!-- ============ ACTIVITY ============ -->
+    <section class="view hidden" id="view-activity">
+      <div class="panel"><div class="panel-head"><h2>Activity Log</h2><span class="panel-tag">full audit trail</span></div><div id="activityLog" class="mini-list"></div></div>
+    </section>
+
+  </main>
+</div>
+<script src="app.js"></script>
+</body>
+</html>

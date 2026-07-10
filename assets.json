@@ -1,0 +1,22 @@
+[
+  {
+    "id": "prv_mre80252cky2c",
+    "created_at": "2026-07-10T00:51:39.350Z",
+    "record_type": "provider",
+    "name": "Higgsfield",
+    "kind": "video",
+    "base_url": "https://mcp.higgsfield.ai/mcp",
+    "notes": "Connected as a Claude.ai MCP connector. Images, video, 3D, motion control, upscaling. Claude calls it directly; KIT holds the brief + storyboard.",
+    "status": "configured_no_key"
+  },
+  {
+    "id": "prv_mre80252wmd4t",
+    "created_at": "2026-07-10T00:51:39.350Z",
+    "record_type": "provider",
+    "name": "Kling AI",
+    "kind": "video",
+    "base_url": null,
+    "notes": "Connect via Kling MCP in Claude.ai connectors. Cinematic video generation for Studio scenes. Paste each scene prompt from the storyboard.",
+    "status": "configured_no_key"
+  }
+]
