@@ -7,6 +7,12 @@ const reviews = require('./reviews');
 const store = require('./store');
 const events = require('./events');
 const brain = require('./brain');
+const stack = require('./stackBridge');
+
+function summarizeStack(v, max) {
+  const s = typeof v === 'string' ? v : JSON.stringify(v);
+  return s.length > (max || 400) ? s.slice(0, max || 400) + '…' : s;
+}
 
 function respond(answer, detail, recommendation, next_action, data) {
   return { answer, detail: detail || null, recommendation: recommendation || null, next_action: next_action || null, data: data || null };
@@ -79,6 +85,39 @@ async function handle(text, actor) {
     const audit = growth.createAudit({ property: 'main_site', type: 'growth_stack', actor });
     return respond('Growth stack audit opened: ' + audit.id + '.', 'Checklist loaded with 8 growth areas across offer clarity, lead capture, bridges, authority, follow-up, content alignment, traffic, and tracking.', null, 'Add findings as you (or Claude via MCP) work through each property.', audit);
   }
+  // ---- KTB Agent Stack agents (live inside KIT when KTB_STACK_MCP_URL is set)
+  if (stack.enabled()) {
+    try {
+      if (t.includes('content calendar') || (t.includes('calendar') && t.includes('content'))) {
+        const cal = await stack.contentCalendar();
+        const items = Array.isArray(cal) ? cal : (cal.tasks || cal.items || []);
+        return respond(
+          items.length ? items.length + ' item(s) on the content calendar.' : 'The content calendar is empty.',
+          items.slice(0, 6).map(i => (i.title || i.name || 'untitled') + (i.status ? ' [' + i.status + ']' : '')).join('; ') || null,
+          items.length ? null : 'Load next week\u2019s Coffee & Credit and Credit Walk topics so content stays ahead of you.',
+          'Say "add a task" to capture new content ideas into the board.', { source: 'ktb_agent_stack', items });
+      }
+      if (t.includes('ceo dashboard') || t.includes('business metrics') || t.includes('revenue numbers')) {
+        const m = await stack.ceoDashboard();
+        return respond('CEO dashboard pulled from the Agent Stack.', summarizeStack(m, 500), null, 'Ask "give me the hard truth" to cross-check these against KIT benchmarks.', { source: 'ktb_agent_stack', metrics: m });
+      }
+      if (t.includes('sop')) {
+        const s2 = await stack.sops();
+        const list = Array.isArray(s2) ? s2 : (s2.sops || []);
+        return respond(list.length ? list.length + ' SOP(s) in the library.' : 'SOP library is empty \u2014 your own stated weak spot. Start with one.',
+          list.slice(0, 8).map(x => x.name || x.title).join('; ') || null,
+          list.length ? null : 'Capture your Coffee & Credit prep flow first \u2014 it runs weekly, so it pays back fastest.',
+          'SOPs live in the Agent Stack; KIT reads them live.', { source: 'ktb_agent_stack', sops: list });
+      }
+      if (t.includes('website status') || (t.includes('website') && t.includes('governance'))) {
+        const w = await stack.websiteStatus();
+        return respond('Website governance status pulled from the Agent Stack.', summarizeStack(w, 500), null, 'Approvals for site changes still come only from you.', { source: 'ktb_agent_stack', status: w });
+      }
+    } catch (e) {
+      return respond('The Agent Stack didn\u2019t answer \u2014 it may be waking up on Render.', 'Error: ' + e.message, 'Try again in about 60 seconds; free-tier services sleep when idle.', null, null);
+    }
+  }
+
   // Explicit capture language always creates a task.
   const wantsCapture = /\b(add a task|add task|new task|remind me|capture|to-?do)\b/.test(t);
 

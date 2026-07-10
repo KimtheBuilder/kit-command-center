@@ -40,6 +40,18 @@ Respond with ONLY a JSON object, no markdown fences, no preamble:
 async function ask(text, actor) {
   if (!enabled()) return null;
   try {
+    const snap = snapshot();
+    // If the KTB Agent Stack bridge is configured, fold in live business data.
+    try {
+      const stack = require('./stackBridge');
+      if (stack.enabled()) {
+        const [dash, cal] = await Promise.allSettled([stack.ceoDashboard(), stack.contentCalendar()]);
+        snap.agent_stack = {
+          ceo_dashboard: dash.status === 'fulfilled' ? dash.value : 'unavailable',
+          content_calendar: cal.status === 'fulfilled' ? cal.value : 'unavailable'
+        };
+      }
+    } catch (e) { /* stack is optional context, never a blocker */ }
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -53,7 +65,7 @@ async function ask(text, actor) {
         system: SYSTEM,
         messages: [{
           role: 'user',
-          content: 'Live business snapshot:\n' + JSON.stringify(snapshot()) + '\n\nKim says: "' + String(text).slice(0, 500) + '"'
+          content: 'Live business snapshot:\n' + JSON.stringify(snap) + '\n\nKim says: "' + String(text).slice(0, 500) + '"'
         }]
       })
     });
