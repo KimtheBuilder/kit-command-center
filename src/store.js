@@ -9,7 +9,7 @@ if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 const COLLECTIONS = [
   'agents','goals','tasks','approvals','campaigns','audits','findings',
   'recommendations','workflows','assets','kpis','benchmarks','reviews',
-  'scorecards','decisions','events','cinematic_projects','scenes'
+  'scorecards','decisions','events','cinematic_projects','scenes','edit_jobs'
 ];
 
 const cache = {};

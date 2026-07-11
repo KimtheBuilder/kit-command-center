@@ -106,6 +106,14 @@ const TOOLS = [
   { name: 'log_decision', description: 'Record a business decision in the decision log (subject, decision, note).', schema: { type: 'object', properties: { subject: { type: 'string' }, decision: { type: 'string' }, note: { type: 'string' } }, required: ['subject', 'decision'] },
     run: a => store.create('decisions', a, 'dec') },
 
+  { name: 'editor_list_zoom_recordings', description: 'List Kim\'s recent Zoom cloud recordings available to the KIT editor (topic, date, duration, meeting_id).', schema: { type: 'object', properties: { days: { type: 'number', description: 'Look back N days (default 30)' } } },
+    run: async a => require('./zoom').listRecordings((a && a.days) || 30) },
+  { name: 'editor_create_job', description: 'Start a KIT edit job: downloads the Zoom recording (by meeting_id) or a direct video URL, selects the best clips using Kim\'s protocol, and cuts horizontal master clips plus vertical 9:16 captioned shorts. Returns the job; poll editor_job_status for progress and download URLs.', schema: { type: 'object', properties: { source: { type: 'string', enum: ['zoom', 'url'] }, meeting_id: { type: 'string' }, video_url: { type: 'string' }, transcript_vtt: { type: 'string', description: 'WebVTT transcript (required for url jobs)' } }, required: ['source'] },
+    run: a => require('./modules/editor').createJob({ ...a, actor: ACTOR }) },
+  { name: 'editor_job_status', description: 'Get one edit job: status (queued/downloading/selecting_clips/cutting/done/failed), selected clips, and download URLs for finished video files.', schema: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
+    run: a => require('./modules/editor').getJob(a.id) },
+  { name: 'editor_list_jobs', description: 'List recent KIT edit jobs with statuses and finished clip download URLs.', schema: { type: 'object', properties: {} },
+    run: () => require('./modules/editor').listJobs() },
   { name: 'get_activity_log', description: 'Recent system events — full audit trail of who did what.', schema: { type: 'object', properties: { limit: { type: 'number' } } },
     run: a => events.recent(a.limit || 40) }
 ];

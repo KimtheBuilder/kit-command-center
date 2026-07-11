@@ -109,6 +109,15 @@ router.post('/nurture/audits', wrap(req => nurture.createWorkflowAudit(req.body)
 router.post('/nurture/audits/:id/check', wrap(req => nurture.recordQaResult(req.params.id, req.body.check, req.body.result, req.body.note, req.body.actor)));
 router.post('/nurture/sequences', wrap(req => nurture.draftSequence(req.body)));
 
+// ---- Editor (Kim's own video editor)
+const editor = require('./modules/editor');
+const zoomApi = require('./zoom');
+router.get('/editor/zoom-status', wrap(() => ({ connected: zoomApi.enabled() })));
+router.get('/editor/recordings', wrap(async req => { if (!zoomApi.enabled()) throw new Error('Zoom not connected — set ZOOM_ACCOUNT_ID, ZOOM_CLIENT_ID, ZOOM_CLIENT_SECRET.'); return zoomApi.listRecordings(Number(req.query.days || 30)); }));
+router.get('/editor/jobs', wrap(() => editor.listJobs()));
+router.get('/editor/jobs/:id', wrap(req => editor.getJob(req.params.id)));
+router.post('/editor/jobs', wrap(req => editor.createJob({ ...req.body, actor: req.body.actor || 'owner' })));
+
 // ---- Campaigns (outcome tracking)
 router.get('/campaigns', wrap(() => store.list('campaigns').reverse()));
 router.post('/campaigns', wrap(req => {
