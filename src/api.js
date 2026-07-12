@@ -118,6 +118,12 @@ router.get('/editor/jobs', wrap(() => editor.listJobs()));
 router.get('/editor/jobs/:id', wrap(req => editor.getJob(req.params.id)));
 router.post('/editor/jobs', wrap(req => editor.createJob({ ...req.body, actor: req.body.actor || 'owner' })));
 
+// ---- GoHighLevel (leads + pipeline feed KIT automatically)
+const ghl = require('./ghl');
+router.get('/ghl/status', wrap(() => ghl.status()));
+router.post('/ghl/sync', wrap(req => ghl.sync(req.body && req.body.actor)));
+router.get('/ghl/snapshot', wrap(() => ghl.lastSnapshot()));
+
 // ---- Campaigns (outcome tracking)
 router.get('/campaigns', wrap(() => store.list('campaigns').reverse()));
 router.post('/campaigns', wrap(req => {

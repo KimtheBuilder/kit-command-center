@@ -57,6 +57,10 @@ async function ask(text, actor) {
         };
       }
     } catch (e) { /* stack is optional context, never a blocker */ }
+    try {
+      const ghl = require('./ghl');
+      if (ghl.enabled()) snap.ghl = ghl.lastSnapshot() || 'connected, first sync pending';
+    } catch (e) { /* optional */ }
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
