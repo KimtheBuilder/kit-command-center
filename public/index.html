@@ -25,6 +25,7 @@
     <button class="nav-item" data-view="approvals">Approvals <span class="nav-badge" id="approvalBadge"></span></button>
     <button class="nav-item" data-view="kpis">KPIs &amp; Benchmarks</button>
     <div class="nav-group-label">Agents</div>
+    <button class="nav-item" data-view="editor">Editor</button>
     <button class="nav-item" data-view="growth">Growth Audit</button>
     <button class="nav-item" data-view="governance">Site &amp; Funnel Governance</button>
     <button class="nav-item" data-view="cinematic">Cinematic Studio</button>
@@ -194,6 +195,30 @@
           <button class="btn gold" id="revDraft">Draft revision</button>
         </div>
         <div id="revisions" class="mini-list"></div>
+      </div>
+    </section>
+
+    <!-- ============ EDITOR ============ -->
+    <section class="view hidden" id="view-editor">
+      <div class="panel">
+        <h2>Editor — Zoom to finished clips</h2>
+        <div class="dim" id="zoomState">Checking Zoom connection…</div>
+        <div class="form-row" style="margin-top:10px">
+          <button class="btn" id="loadRecordings">Load my Zoom recordings</button>
+        </div>
+        <div id="recordingList" class="mini-list"></div>
+        <h3 style="margin-top:18px">Or paste a direct video URL</h3>
+        <div class="form-row">
+          <input id="edUrl" type="text" placeholder="https://… direct downloadable .mp4 link" style="flex:1" />
+        </div>
+        <textarea id="edVtt" placeholder="Optional: paste the WebVTT transcript here (required for URL jobs; Zoom jobs fetch it automatically)" rows="4" style="width:100%;margin-top:8px"></textarea>
+        <div class="form-row" style="margin-top:8px">
+          <button class="btn gold" id="edCreateUrl">Cut clips from URL</button>
+        </div>
+      </div>
+      <div class="panel">
+        <h2>Edit jobs</h2>
+        <div id="editJobs" class="mini-list"></div>
       </div>
     </section>
 

@@ -221,3 +221,7 @@ body > *{position:relative;z-index:1}
   font-family: 'DM Mono', monospace; font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
   color: rgba(183,162,94,.75); margin: 6px 4px 14px 48px;
 }
+
+.gold-link{color:var(--gold);text-decoration:none;border-bottom:1px solid rgba(183,162,94,.4)}
+.gold-link:hover{border-bottom-color:var(--gold)}
+#view-editor textarea{background:rgba(4,35,28,.6);border:1px solid rgba(183,162,94,.25);color:var(--cream);border-radius:6px;padding:8px;font-family:'DM Sans',sans-serif}

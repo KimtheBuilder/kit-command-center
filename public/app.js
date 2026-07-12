@@ -312,6 +312,52 @@ $('#wfAudit').addEventListener('click', async () => {
   toast('QA audit opened: ' + a.id); loadNurture();
 });
 
+// ---------- editor ----------
+async function loadEditor() {
+  try {
+    const z = await api('/editor/zoom-status');
+    $('#zoomState').textContent = z.connected ? 'Zoom connected — load your recordings below.' : 'Zoom not connected yet. Set ZOOM_ACCOUNT_ID, ZOOM_CLIENT_ID, ZOOM_CLIENT_SECRET in Render, or use a direct video URL below.';
+  } catch (e) { $('#zoomState').textContent = e.message; }
+  loadEditJobs();
+}
+async function loadEditJobs() {
+  try {
+    const jobs = await api('/editor/jobs');
+    $('#editJobs').innerHTML = jobs.length ? jobs.map(j => `
+      <div class="mini-item">
+        <b>${esc(j.topic || j.meeting_id || j.video_url || j.id)}</b>
+        <span class="sev ${j.status === 'done' ? 'low' : j.status === 'failed' ? 'high' : 'medium'}">${j.status.replace(/_/g,' ')}</span>
+        ${j.error ? `<div class="dim">${esc(j.error)}</div>` : ''}
+        ${(j.results || []).map(r => `
+          <div style="margin-top:6px"><b>${esc(r.title)}</b> <span class="dim">(${Math.round(r.end_seconds - r.start_seconds)}s · hook ${r.hook_strength}/10)</span><br>
+          ${r.files.map(f => `<a class="gold-link" href="${f.url}" download>⬇ ${f.kind.replace(/_/g,' ')}</a>`).join(' · ')}</div>`).join('')}
+      </div>`).join('') : '<div class="mini-item dim">No edit jobs yet. Load a Zoom recording or paste a video URL above.</div>';
+    if (jobs.some(j => ['queued','downloading','selecting_clips','cutting'].includes(j.status))) setTimeout(loadEditJobs, 5000);
+  } catch (e) { console.error(e); }
+}
+$('#loadRecordings').addEventListener('click', async () => {
+  $('#recordingList').innerHTML = '<div class="mini-item dim">Loading…</div>';
+  try {
+    const recs = await api('/editor/recordings');
+    $('#recordingList').innerHTML = recs.length ? recs.map(r => `
+      <div class="mini-item"><b>${esc(r.topic)}</b> <span class="dim">· ${new Date(r.start_time).toLocaleDateString()} · ${r.duration_min} min</span>
+      <div class="card-actions"><button class="btn small" onclick="cutZoom('${r.meeting_id}', this)">Cut clips</button></div></div>`).join('')
+      : '<div class="mini-item dim">No cloud recordings in the last 30 days.</div>';
+  } catch (e) { $('#recordingList').innerHTML = '<div class="mini-item dim">' + esc(e.message) + '</div>'; }
+});
+window.cutZoom = async (meetingId, btn) => {
+  btn.textContent = 'Starting…'; btn.disabled = true;
+  try { await api('/editor/jobs', 'POST', { source: 'zoom', meeting_id: meetingId }); toast('Edit job started — KIT is on it.'); loadEditJobs(); }
+  catch (e) { toast(e.message); btn.textContent = 'Cut clips'; btn.disabled = false; }
+};
+$('#edCreateUrl').addEventListener('click', async () => {
+  const video_url = $('#edUrl').value.trim(); if (!video_url) return toast('Paste a direct video URL');
+  const transcript_vtt = $('#edVtt').value.trim();
+  if (!transcript_vtt) return toast('URL jobs need the transcript pasted (WebVTT)');
+  try { await api('/editor/jobs', 'POST', { source: 'url', video_url, transcript_vtt }); toast('Edit job started'); $('#edUrl').value=''; $('#edVtt').value=''; loadEditJobs(); }
+  catch (e) { toast(e.message); }
+});
+
 // ---------- reviews ----------
 const REVIEW_TYPES = ['weekly_operator', 'monthly_growth', 'bottleneck', 'scale_readiness', 'campaign', 'funnel_health', 'founder_workload'];
 function loadReviews() {
@@ -330,5 +376,5 @@ async function loadActivity() {
     `<div class="mini-item"><span class="id">${new Date(e.created_at).toLocaleString()}</span> <b>${esc(e.actor)}</b> ${esc(e.action)} <span class="dim">${esc(e.detail || '')}</span></div>`).join('');
 }
 
-const loaders = { overview: loadOverview, tasks: loadTasks, approvals: loadApprovals, kpis: loadKpis, growth: loadGrowth, governance: loadGovernance, cinematic: loadCinematic, nurture: loadNurture, reviews: loadReviews, activity: loadActivity };
+const loaders = { overview: loadOverview, editor: loadEditor, tasks: loadTasks, approvals: loadApprovals, kpis: loadKpis, growth: loadGrowth, governance: loadGovernance, cinematic: loadCinematic, nurture: loadNurture, reviews: loadReviews, activity: loadActivity };
 loadOverview();
