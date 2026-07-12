@@ -13,6 +13,8 @@ app.use(express.json({ limit: '2mb' }));
 mcp.mount(app);                       // /mcp/:pathToken  (Claude custom connector)
 app.use('/api', api);                 // REST API for the dashboard + integrations
 app.use(express.static(path.join(__dirname, 'public')));
+app.use('/media', express.static(require('./src/modules/editor').MEDIA_ROOT, { maxAge: '1h' }));
+if (require('./src/ghl').startAutoSync()) console.log('GHL auto-sync ON — leads & pipeline every 12h');
 app.get('/health', (req, res) => res.json({ ok: true, service: 'kit-command-center', data_dir: store.DATA_DIR, mcp_configured: !!process.env.MCP_PATH_TOKEN, admin_key_set: !!process.env.ADMIN_KEY }));
 
 seed();
