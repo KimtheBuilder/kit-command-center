@@ -2,6 +2,7 @@
 // Env: ZOOM_ACCOUNT_ID, ZOOM_CLIENT_ID, ZOOM_CLIENT_SECRET
 // KIT lists Kim's cloud recordings and downloads MP4 + VTT transcript for the editor.
 const fs = require('fs');
+const remoteDownload = require('./remoteDownload');
 
 let _token = null, _tokenExp = 0;
 
@@ -62,19 +63,11 @@ async function recordingAssets(meetingId) {
 async function downloadToFile(url, destPath, useAuth) {
   const headers = {};
   if (useAuth && enabled()) headers.Authorization = 'Bearer ' + await token();
-  const res = await fetch(url, { headers, redirect: 'follow' });
-  if (!res.ok) throw new Error('Download failed (' + res.status + ')');
-  const ws = fs.createWriteStream(destPath);
-  const reader = res.body.getReader();
-  let bytes = 0;
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    bytes += value.length;
-    if (!ws.write(Buffer.from(value))) await new Promise(r => ws.once('drain', r));
-  }
-  await new Promise((res2, rej) => { ws.end(() => res2()); ws.on('error', rej); });
-  return bytes;
+  const transcript = /\.(vtt|txt)$/i.test(destPath);
+  return remoteDownload.downloadToFile(url, destPath, {
+    headers,
+    allowedTypes: transcript ? ['text/vtt', 'text/plain', 'application/octet-stream'] : ['video/', 'application/octet-stream']
+  });
 }
 
 module.exports = { enabled, listRecordings, recordingAssets, downloadToFile };

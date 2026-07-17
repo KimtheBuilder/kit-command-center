@@ -173,9 +173,9 @@ async function loadTasks() {
         <div class="card-title">${esc(t.title)}</div>
         <div class="card-meta"><span class="owner-chip">${esc(t.owner_type || '')}</span><span>P${t.priority_score}</span><span>${esc(t.agent)}</span></div>
         <div class="card-actions">
-          ${st !== 'in_progress' && st !== 'completed' ? `<button class="btn small" onclick="moveTask('${t.id}','in_progress')">Start</button>` : ''}
-          ${st === 'in_progress' ? `<button class="btn small" onclick="moveTask('${t.id}','completed')">Done</button><button class="btn small" onclick="moveTask('${t.id}','blocked')">Block</button>` : ''}
-          ${st === 'blocked' ? `<button class="btn small" onclick="moveTask('${t.id}','in_progress')">Unblock</button>` : ''}
+          ${st !== 'in_progress' && st !== 'completed' ? `<button class="btn small" data-action="move-task" data-id="${esc(t.id)}" data-status="in_progress">Start</button>` : ''}
+          ${st === 'in_progress' ? `<button class="btn small" data-action="move-task" data-id="${esc(t.id)}" data-status="completed">Done</button><button class="btn small" data-action="move-task" data-id="${esc(t.id)}" data-status="blocked">Block</button>` : ''}
+          ${st === 'blocked' ? `<button class="btn small" data-action="move-task" data-id="${esc(t.id)}" data-status="in_progress">Unblock</button>` : ''}
         </div>
       </div>`).join('')}
     </div>`).join('');
@@ -196,8 +196,8 @@ async function loadApprovals() {
       <div class="approval-meta">${esc(a.category)} · ${a.status} · ${new Date(a.created_at).toLocaleDateString()}${a.decision_note ? ' · “' + esc(a.decision_note) + '”' : ''}</div>
       ${a.status === 'pending' ? `
         <div class="form-row">
-          <button class="btn small approve" onclick="decide('${a.id}','approved')">Approve</button>
-          <button class="btn small reject" onclick="decide('${a.id}','rejected')">Reject</button>
+          <button class="btn small approve" data-action="decide" data-id="${esc(a.id)}" data-decision="approved">Approve</button>
+          <button class="btn small reject" data-action="decide" data-id="${esc(a.id)}" data-decision="rejected">Reject</button>
         </div>` : ''}
     </div>`).join('') : '<div class="mini-item dim">Queue is clear. Nothing is waiting on you.</div>';
 }
@@ -282,7 +282,7 @@ async function loadCinematic() {
   const projects = await api('/cinematic/projects');
   $('#cinProjects').innerHTML = projects.length ? projects.map(p =>
     `<div class="mini-item"><span class="id">${p.id}</span> <b>${esc(p.title)}</b> <span class="dim">· ${esc(p.offer || '')} · ${p.status} · ${(p.channels || []).join(', ')}</span>
-     ${p.status === 'brief' ? `<div class="card-actions"><button class="btn small" onclick="genBrief('${p.id}')">Generate brief</button></div>` : ''}
+     ${p.status === 'brief' ? `<div class="card-actions"><button class="btn small" data-action="generate-brief" data-id="${esc(p.id)}">Generate brief</button></div>` : ''}
     </div>`).join('') : '<div class="mini-item dim">No cinematic projects yet.</div>';
 }
 window.genBrief = async id => { await api('/cinematic/projects/' + id + '/brief', 'POST', {}); toast('Brief generated — moved to storyboard'); loadCinematic(); };
@@ -341,7 +341,7 @@ $('#loadRecordings').addEventListener('click', async () => {
     const recs = await api('/editor/recordings');
     $('#recordingList').innerHTML = recs.length ? recs.map(r => `
       <div class="mini-item"><b>${esc(r.topic)}</b> <span class="dim">· ${new Date(r.start_time).toLocaleDateString()} · ${r.duration_min} min</span>
-      <div class="card-actions"><button class="btn small" onclick="cutZoom('${r.meeting_id}', this)">Cut clips</button></div></div>`).join('')
+      <div class="card-actions"><button class="btn small" data-action="cut-zoom" data-meeting-id="${esc(r.meeting_id)}">Cut clips</button></div></div>`).join('')
       : '<div class="mini-item dim">No cloud recordings in the last 30 days.</div>';
   } catch (e) { $('#recordingList').innerHTML = '<div class="mini-item dim">' + esc(e.message) + '</div>'; }
 });
@@ -361,7 +361,7 @@ $('#edCreateUrl').addEventListener('click', async () => {
 // ---------- reviews ----------
 const REVIEW_TYPES = ['weekly_operator', 'monthly_growth', 'bottleneck', 'scale_readiness', 'campaign', 'funnel_health', 'founder_workload'];
 function loadReviews() {
-  $('#reviewButtons').innerHTML = REVIEW_TYPES.map(t => `<button class="btn" onclick="runReview('${t}')">${t.replace(/_/g, ' ')}</button>`).join('');
+  $('#reviewButtons').innerHTML = REVIEW_TYPES.map(t => `<button class="btn" data-action="run-review" data-review="${esc(t)}">${t.replace(/_/g, ' ')}</button>`).join('');
 }
 window.runReview = async t => {
   const r = await api('/reviews/' + t, 'POST', {});
@@ -377,4 +377,14 @@ async function loadActivity() {
 }
 
 const loaders = { overview: loadOverview, editor: loadEditor, tasks: loadTasks, approvals: loadApprovals, kpis: loadKpis, growth: loadGrowth, governance: loadGovernance, cinematic: loadCinematic, nurture: loadNurture, reviews: loadReviews, activity: loadActivity };
+document.addEventListener('click', event => {
+  const button = event.target.closest('button[data-action]');
+  if (!button) return;
+  const action = button.dataset.action;
+  if (action === 'move-task') moveTask(button.dataset.id, button.dataset.status);
+  else if (action === 'decide') decide(button.dataset.id, button.dataset.decision);
+  else if (action === 'generate-brief') genBrief(button.dataset.id);
+  else if (action === 'cut-zoom') cutZoom(button.dataset.meetingId, button);
+  else if (action === 'run-review') runReview(button.dataset.review);
+});
 loadOverview();

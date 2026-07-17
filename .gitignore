@@ -1,0 +1,36 @@
+node_modules/
+
+# Secrets and local environment overrides
+.env
+.env.*
+!.env.example
+
+# Logs and diagnostics
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Generated media and transient runtime data
+data/media/
+media/
+tmp/
+temp/
+.tmp/
+*.tmp
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Local JSON persistence (keep committed seed fixtures)
+data/*.local.json
+data/local/
+data/runtime/
+
+# Coverage and editor metadata
+coverage/
+.nyc_output/
+.vscode/
+.idea/
