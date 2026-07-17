@@ -2,6 +2,7 @@
 const store = require('../store');
 const events = require('../events');
 const rules = require('../rules');
+const { PublicError } = require('../security');
 
 const TASK_STATES = ['draft', 'in_progress', 'blocked', 'awaiting_approval', 'completed'];
 
@@ -60,11 +61,14 @@ function requestApproval({ title, description, task_id, payload, category, actor
 }
 
 function decideApproval(id, decision, note, actor) {
-  if (!['approved', 'rejected'].includes(decision)) throw new Error('decision must be approved or rejected');
+  if (!['approved', 'rejected'].includes(decision)) throw new PublicError('decision must be approved or rejected', 400);
+  if (actor !== 'owner') throw new PublicError('Only the authenticated owner can decide approvals.', 403);
+  const existing = store.get('approvals', id);
+  if (!existing) throw new PublicError('Approval not found.', 404);
+  if (existing.status !== 'pending') throw new PublicError('Approval has already been decided.', 409);
   const ap = store.update('approvals', id, { status: decision, decision_note: note || null, decided_at: new Date().toISOString(), decided_by: actor || 'owner' });
-  if (!ap) throw new Error('Approval not found: ' + id);
   if (ap.task_id) store.update('tasks', ap.task_id, { status: decision === 'approved' ? 'in_progress' : 'draft' });
-  events.log(actor || 'owner', 'approval.' + decision, 'approval', id, note || '');
+  events.log('owner', 'approval.' + decision, 'approval', id, note || '');
   const dec = store.create('decisions', { subject: ap.title, decision, note: note || null, approval_id: id }, 'dec');
   return { approval: ap, decision: dec };
 }

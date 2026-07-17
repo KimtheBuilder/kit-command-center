@@ -11,6 +11,7 @@ const store = require('./../store');
 const events = require('./../events');
 const zoom = require('./../zoom');
 const vtt = require('./../vtt');
+const media = require('./../media');
 
 let FFMPEG = 'ffmpeg';
 try { FFMPEG = require('ffmpeg-static') || 'ffmpeg'; } catch (e) { /* system ffmpeg fallback */ }
@@ -168,12 +169,21 @@ function createJob(input) {
 }
 
 function listJobs() {
-  return store.list('edit_jobs').reverse().slice(0, 12).map(j => { const { transcript_vtt, ...lean } = j; return lean; });
+  return store.list('edit_jobs').reverse().slice(0, 12).map(publicJob);
 }
 function getJob(id) {
   const j = store.get('edit_jobs', id);
   if (!j) throw new Error('Job not found');
-  const { transcript_vtt, ...lean } = j; return lean;
+  return publicJob(j);
+}
+
+function publicJob(j) {
+  const { transcript_vtt, ...lean } = j;
+  if (Array.isArray(lean.results)) lean.results = lean.results.map(result => ({
+    ...result,
+    files: (result.files || []).map(file => ({ ...file, url: media.signedUrl(j.id, file.file) }))
+  }));
+  return lean;
 }
 
 module.exports = { createJob, listJobs, getJob, MEDIA_ROOT, selectClips };

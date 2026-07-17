@@ -170,7 +170,10 @@ function mount(app) {
     // No server-initiated stream in V1; clients using Streamable HTTP treat 405 as "POST only".
     res.status(405).json({ error: 'SSE stream not enabled; POST JSON-RPC to this URL.' });
   });
-  app.delete('/mcp/:pathToken', (req, res) => res.status(200).end());
+  app.delete('/mcp/:pathToken', (req, res) => {
+    if (!token || req.params.pathToken !== token) return res.status(401).end();
+    return res.status(200).end();
+  });
 }
 
 module.exports = { mount, TOOLS };

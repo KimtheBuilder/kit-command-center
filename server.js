@@ -1,27 +1,62 @@
-// KIT Command Center — Kim the Builder's business operating system.
-// Plain Node.js + Express. No build step. Start: node server.js
+// KIT Command Center — secured Node.js + Express entrypoint.
 const express = require('express');
+const helmet = require('helmet');
+const { rateLimit } = require('express-rate-limit');
 const path = require('path');
 const api = require('./src/api');
 const mcp = require('./src/mcp');
 const { seed } = require('./src/seed');
-const store = require('./src/store');
+const { assertStartupSecurity, errorResponse, securityLog } = require('./src/security');
+const editor = require('./src/modules/editor');
+const { mountMedia } = require('./src/media');
 
-const app = express();
-app.use(express.json({ limit: '2mb' }));
+function createApp() {
+  assertStartupSecurity();
+  const app = express();
+  app.disable('x-powered-by');
+  app.use(helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"], scriptSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+        fontSrc: ["'self'", 'https://fonts.gstatic.com'],
+        imgSrc: ["'self'", 'data:'], mediaSrc: ["'self'", 'blob:'], connectSrc: ["'self'"],
+        upgradeInsecureRequests: process.env.NODE_ENV === 'production' ? [] : null
+      }
+    }
+  }));
+  app.use(express.json({ limit: '2mb', strict: true }));
 
-mcp.mount(app);                       // /mcp/:pathToken  (Claude custom connector)
-app.use('/api', api);                 // REST API for the dashboard + integrations
-app.use(express.static(path.join(__dirname, 'public')));
-app.use('/media', express.static(require('./src/modules/editor').MEDIA_ROOT, { maxAge: '1h' }));
-if (require('./src/ghl').startAutoSync()) console.log('GHL auto-sync ON — leads & pipeline every 12h');
-app.get('/health', (req, res) => res.json({ ok: true, service: 'kit-command-center', data_dir: store.DATA_DIR, mcp_configured: !!process.env.MCP_PATH_TOKEN, admin_key_set: !!process.env.ADMIN_KEY }));
+  app.use('/api', rateLimit({ windowMs: 15 * 60 * 1000, limit: Number(process.env.API_RATE_LIMIT || 300), standardHeaders: 'draft-7', legacyHeaders: false }));
+  app.use('/mcp', rateLimit({ windowMs: 60 * 1000, limit: Number(process.env.MCP_RATE_LIMIT || 120), standardHeaders: 'draft-7', legacyHeaders: false }));
 
-seed();
+  mcp.mount(app);
+  app.use('/api', api);
+  mountMedia(app, editor.MEDIA_ROOT);
+  app.use(express.static(path.join(__dirname, 'public')));
+  app.get('/health', (req, res) => res.json({ ok: true, service: 'kit-command-center' }));
+  app.use((req, res) => res.status(404).json({ ok: false, error: 'Not found.' }));
+  app.use((error, req, res, next) => {
+    if (res.headersSent) return next(error);
+    if (error instanceof SyntaxError && error.status === 400 && 'body' in error) {
+      error.expose = true; error.status = 400; error.message = 'Invalid JSON body.';
+    }
+    return errorResponse(res, error, { method: req.method, path: req.originalUrl });
+  });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log('KIT Command Center running on port ' + PORT);
-  console.log('Data dir: ' + store.DATA_DIR);
-  console.log('MCP token ' + (process.env.MCP_PATH_TOKEN ? 'SET \u2014 connector URL: /mcp/<token>' : 'NOT SET \u2014 set MCP_PATH_TOKEN env var'));
-});
+  seed();
+  return app;
+}
+
+function start() {
+  const app = createApp();
+  if (require('./src/ghl').startAutoSync()) console.log('GHL auto-sync ON — leads & pipeline every 12h');
+  const port = Number(process.env.PORT || 3000);
+  return app.listen(port, () => {
+    console.log('KIT Command Center running on port ' + port);
+    securityLog('server_started', { port, environment: process.env.NODE_ENV || 'development' });
+  });
+}
+
+if (require.main === module) start();
+module.exports = { createApp, start };
