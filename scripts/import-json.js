@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const store = require('../src/store');
+const database = require('../src/database');
 
 const inputDir = path.resolve(process.env.JSON_IMPORT_DIR || path.join(__dirname, '..', 'data'));
 
@@ -30,5 +31,9 @@ async function run() {
   console.log(JSON.stringify({ input_dir: inputDir, imported: totals }, null, 2));
 }
 
-if (require.main === module) run().catch(error => { console.error(error.message); process.exitCode = 1; });
+if (require.main === module) (async () => {
+  try { await run(); }
+  catch (error) { console.error(error.message); process.exitCode = 1; }
+  finally { await database.close(); }
+})();
 module.exports = { importDirectory, run };

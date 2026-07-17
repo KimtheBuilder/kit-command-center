@@ -47,18 +47,20 @@ Additional video-ingestion controls:
 
 1. Create a Render PostgreSQL database in the same region as the web service.
 2. Set `DATABASE_URL` to Render's internal database URL. PostgreSQL is mandatory when `NODE_ENV=production`; startup fails closed if it is absent or unreachable.
-3. Set `DB_SSL=false` for Render's internal URL (`true`/`require` for an external provider that requires TLS), `DB_POOL_MAX=10`, and `DB_CONNECTION_TIMEOUT_MS=10000`.
-4. Deploy normally. Startup applies pending migrations transactionally and records versions in `schema_migrations`. The readiness endpoint returns `503` until the database is available.
-5. Before the first production cutover, preserve the existing JSON directory as a backup and run `JSON_IMPORT_DIR=/path/to/json npm run db:import-json` once. Imports preserve IDs/timestamps, skip existing IDs, split legacy provider records into `providers`, and never edit or delete the JSON source.
-6. Verify record counts and application behavior, then retain the JSON backup for rollback. PostgreSQL-enabled production never writes new application data to JSON.
+3. Set `DB_SSL=disable` for Render's private/internal URL. For an external provider, use `DB_SSL=require` when its TLS policy is otherwise verified by the provider, or `DB_SSL=verify-full` with `DB_SSL_CA` set to the provider's PEM CA certificate for certificate verification. Unknown `DB_SSL` values fail startup. Set `DB_POOL_MAX=10` and `DB_CONNECTION_TIMEOUT_MS=10000`.
+4. Configure exactly one Render web-service instance for this phase. Startup holds a PostgreSQL advisory lock for the life of the process, so a second instance refuses to start instead of serving stale cached data. Do not enable Render autoscaling yet.
+5. Deploy normally. Startup applies pending migrations transactionally under a PostgreSQL advisory lock and records versions in `schema_migrations`. The readiness endpoint returns `503` until the database is available.
+6. Before the first production cutover, preserve the existing JSON directory as a backup and run `JSON_IMPORT_DIR=/path/to/json npm run db:import-json` once. Imports preserve IDs/timestamps, skip existing IDs, split legacy provider records into `providers`, and never edit or delete the JSON source.
+7. Verify record counts and application behavior, then retain the JSON backup for rollback. PostgreSQL-enabled production never writes new application data to JSON, and every store/database entrypoint rejects a missing `DATABASE_URL`.
 
 Operational commands:
 
 - Apply migrations: `npm run db:migrate`
-- Roll back migrations above a target: `DB_MIGRATION_TARGET=0 npm run db:rollback`
+- Roll back only the most recent migration: `npm run db:rollback`
+- Roll back to an explicit older target: `DB_MIGRATION_TARGET=0 npm run db:rollback`
 - Import the JSON backup: `JSON_IMPORT_DIR=/path/to/data npm run db:import-json`
 
-Rollback: stop application writes, take a PostgreSQL backup, run the migration rollback only when intentionally abandoning the PostgreSQL schema, remove `DATABASE_URL`, and deploy with a non-production `NODE_ENV` pointed at the preserved JSON backup. Production intentionally cannot fall back silently to JSON.
+Rollback: stop application writes, take a PostgreSQL backup, and run the migration rollback only when intentionally abandoning schema changes. A rollback removes only the latest migration by default. Production additionally requires the one-command acknowledgement `ALLOW_DESTRUCTIVE_DB_ROLLBACK=I_UNDERSTAND_DATA_WILL_BE_DELETED`; remove it immediately afterward. Restoring the JSON backup requires an explicit non-production deployment because production intentionally cannot fall back to JSON.
 
 ## 3. Connect Claude
 

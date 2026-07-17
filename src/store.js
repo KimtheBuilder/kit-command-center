@@ -15,7 +15,9 @@ const TABLE = new Set(COLLECTIONS);
 const cache = {};
 let initialized = false;
 let adapter;
-let pending = Promise.resolve();
+let queuedOps = [];
+let drainPromise = null;
+let writeError = null;
 let transactionOps = null;
 let transactionLocked = false;
 
@@ -27,6 +29,7 @@ function clone(value) { return structuredClone(value); }
 function jsonFile(col) { return path.join(DATA_DIR, col + '.json'); }
 
 function jsonAdapter() {
+  if (process.env.NODE_ENV === 'production') throw new Error('JSON persistence is prohibited when NODE_ENV=production; configure DATABASE_URL.');
   fs.mkdirSync(DATA_DIR, { recursive: true });
   return {
     kind: 'json-development-fallback',
@@ -51,7 +54,7 @@ function jsonAdapter() {
 function postgresAdapter() {
   return {
     kind: 'postgresql',
-    async initialize() { await database.migrate('up'); await database.health(); },
+    async initialize() { await database.migrate('up'); await database.acquireInstanceLock(); await database.health(); },
     async loadAll() {
       const client = database.connect();
       const out = {};
@@ -63,7 +66,11 @@ function postgresAdapter() {
     },
     async apply(op, client) {
       const sql = client || database.connect();
-      if (op.type === 'delete') return sql.unsafe(`DELETE FROM "${op.collection}" WHERE id = $1`, [op.id]);
+      if (op.type === 'delete') {
+        const result = await sql.unsafe(`DELETE FROM "${op.collection}" WHERE id = $1 AND updated_at = $2`, [op.id, op.expectedUpdatedAt]);
+        if (result.count !== 1) throw new Error('Concurrent delete rejected for ' + op.collection + '/' + op.id + '.');
+        return result;
+      }
       if (op.type === 'insert') {
         return sql.unsafe(`INSERT INTO "${op.collection}" (id, data, created_at, updated_at) VALUES ($1, $2::jsonb, $3, $4)`, [op.row.id, JSON.stringify(op.row), op.row.created_at, op.row.updated_at]);
       }
@@ -86,11 +93,14 @@ async function initialize(options) {
   const loaded = await adapter.loadAll();
   for (const col of COLLECTIONS) cache[col] = clone(loaded[col] || []);
   initialized = true;
-  pending = Promise.resolve();
+  queuedOps = [];
+  drainPromise = null;
+  writeError = null;
 }
 
 function ensureReady() {
   if (!initialized) {
+    if (process.env.NODE_ENV === 'production') throw new Error('PostgreSQL store has not been initialized; JSON persistence is prohibited in production.');
     if (database.enabled()) throw new Error('PostgreSQL store has not been initialized.');
     // Development compatibility: JSON loading is synchronous on first access.
     adapter = jsonAdapter();
@@ -101,12 +111,36 @@ function ensureReady() {
   }
 }
 
-function enqueue(op) {
-  if (transactionOps) { transactionOps.push(op); return; }
-  pending = pending.then(() => adapter.apply(op));
+function restore(snapshot) {
+  for (const col of COLLECTIONS) cache[col] = snapshot[col];
 }
 
-async function flush() { await pending; }
+function enqueue(op, snapshot) {
+  if (transactionOps) { transactionOps.push(op); return; }
+  queuedOps.push({ op, snapshot });
+  queueMicrotask(startDrain);
+}
+
+function startDrain() {
+  if (drainPromise || !queuedOps.length) return drainPromise;
+  const batch = queuedOps.splice(0);
+  drainPromise = (async () => {
+    try {
+      await adapter.transaction(batch.map(item => item.op));
+    } catch (error) {
+      restore(batch[0].snapshot);
+      queuedOps = [];
+      writeError = error;
+    }
+  })().finally(() => { drainPromise = null; if (queuedOps.length && !writeError) startDrain(); });
+  return drainPromise;
+}
+
+async function flush() {
+  if (writeError) { const error = writeError; writeError = null; throw error; }
+  while (queuedOps.length || drainPromise) { startDrain(); if (drainPromise) await drainPromise; }
+  if (writeError) { const error = writeError; writeError = null; throw error; }
+}
 
 function id(prefix) {
   return (prefix || 'row') + '_' + crypto.randomBytes(12).toString('base64url');
@@ -115,10 +149,11 @@ function id(prefix) {
 function create(col, obj, prefix) {
   ensureReady(); assertCollection(col);
   if (transactionLocked && !transactionOps) throw new Error('Store transaction in progress; retry the write.');
+  const snapshot = clone(cache);
   const now = new Date().toISOString();
   const row = { id: id(prefix || col.slice(0, 3)), created_at: now, updated_at: now, ...clone(obj) };
   cache[col].push(row);
-  enqueue({ type: 'insert', collection: col, row: clone(row) });
+  enqueue({ type: 'insert', collection: col, row: clone(row) }, snapshot);
   return clone(row);
 }
 
@@ -126,11 +161,12 @@ function update(col, rowId, patch) {
   ensureReady(); assertCollection(col);
   if (transactionLocked && !transactionOps) throw new Error('Store transaction in progress; retry the write.');
   if (col === 'events') throw new Error('Events are immutable.');
+  const snapshot = clone(cache);
   const row = cache[col].find(item => item.id === rowId);
   if (!row) return null;
   const expectedUpdatedAt = row.updated_at;
   Object.assign(row, clone(patch), { updated_at: new Date().toISOString() });
-  enqueue({ type: 'update', collection: col, row: clone(row), expectedUpdatedAt });
+  enqueue({ type: 'update', collection: col, row: clone(row), expectedUpdatedAt }, snapshot);
   return clone(row);
 }
 
@@ -150,10 +186,11 @@ function remove(col, rowId) {
   ensureReady(); assertCollection(col);
   if (transactionLocked && !transactionOps) throw new Error('Store transaction in progress; retry the write.');
   if (col === 'events') throw new Error('Events are immutable.');
+  const snapshot = clone(cache);
   const index = cache[col].findIndex(item => item.id === rowId);
   if (index === -1) return false;
-  cache[col].splice(index, 1);
-  enqueue({ type: 'delete', collection: col, id: rowId });
+  const [removed] = cache[col].splice(index, 1);
+  enqueue({ type: 'delete', collection: col, id: rowId, expectedUpdatedAt: removed.updated_at }, snapshot);
   return true;
 }
 
@@ -163,10 +200,11 @@ function importRows(col, rows) {
   let imported = 0;
   for (const input of rows || []) {
     if (!input || !input.id || cache[col].some(row => row.id === input.id)) continue;
+    const snapshot = clone(cache);
     const now = new Date().toISOString();
     const row = { ...clone(input), created_at: input.created_at || now, updated_at: input.updated_at || input.created_at || now };
     cache[col].push(row);
-    enqueue({ type: 'insert', collection: col, row: clone(row) });
+    enqueue({ type: 'insert', collection: col, row: clone(row) }, snapshot);
     imported++;
   }
   return imported;
@@ -195,7 +233,10 @@ async function transaction(fn) {
 }
 
 async function health() { ensureReady(); await flush(); return adapter.health(); }
-function backend() { return adapter ? adapter.kind : (database.enabled() ? 'postgresql-uninitialized' : 'json-development-fallback'); }
-function resetForTests() { initialized = false; adapter = null; pending = Promise.resolve(); transactionOps = null; transactionLocked = false; for (const col of COLLECTIONS) delete cache[col]; }
+function backend() {
+  if (process.env.NODE_ENV === 'production') database.requireConfigured();
+  return adapter ? adapter.kind : (database.enabled() ? 'postgresql-uninitialized' : 'json-development-fallback');
+}
+function resetForTests() { initialized = false; adapter = null; queuedOps = []; drainPromise = null; writeError = null; transactionOps = null; transactionLocked = false; for (const col of COLLECTIONS) delete cache[col]; }
 
 module.exports = { COLLECTIONS, DATA_DIR, backend, create, flush, get, health, id, importRows, initialize, list, remove, resetForTests, transaction, update };

@@ -11,6 +11,7 @@ const editor = require('./src/modules/editor');
 const { mountMedia } = require('./src/media');
 const store = require('./src/store');
 const { prepare } = require('./src/startup');
+const { installSignalHandlers } = require('./src/shutdown');
 
 function createApp() {
   assertStartupSecurity();
@@ -62,10 +63,12 @@ async function start() {
   const app = createApp();
   if (require('./src/ghl').startAutoSync()) console.log('GHL auto-sync ON — leads & pipeline every 12h');
   const port = Number(process.env.PORT || 3000);
-  return app.listen(port, () => {
+  const server = app.listen(port, () => {
     console.log('KIT Command Center running on port ' + port);
     securityLog('server_started', { port, environment: process.env.NODE_ENV || 'development' });
   });
+  installSignalHandlers(server);
+  return server;
 }
 
 if (require.main === module) start().catch(error => { console.error('Startup failed: ' + error.message); process.exitCode = 1; });

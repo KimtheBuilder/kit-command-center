@@ -9,6 +9,7 @@ const store = require('../src/store');
 const { assertStartupSecurity } = require('../src/security');
 const { importDirectory } = require('../scripts/import-json');
 const { prepare } = require('../src/startup');
+const shutdown = require('../src/shutdown');
 
 function memoryAdapter(options) {
   const state = Object.fromEntries(store.COLLECTIONS.map(name => [name, []]));
@@ -22,7 +23,10 @@ function memoryAdapter(options) {
       if (op.type === 'delete') state[op.collection] = state[op.collection].filter(row => row.id !== op.id);
     },
     async transaction(ops) {
-      if (options && options.failTransactions) throw new Error('transaction failed');
+      if (options && options.failTransactions) {
+        if (options.failTransactions !== 'always') options.failTransactions = false;
+        throw new Error('transaction failed');
+      }
       const snapshot = structuredClone(state);
       try { for (const op of ops) await this.apply(op); } catch (error) { Object.assign(state, snapshot); throw error; }
     },
@@ -51,6 +55,15 @@ test('pool settings are bounded by explicit environment configuration', () => {
   assert.equal(options.connect_timeout, 5);
   assert.equal(options.ssl, 'require');
   process.env = old;
+});
+
+test('DB_SSL rejects unknown modes and supports verified certificates', () => {
+  const original = { ...process.env };
+  process.env.DB_SSL = 'opportunistic';
+  assert.throws(database.connectionOptions, /DB_SSL must be/);
+  process.env.DB_SSL = 'verify-full'; process.env.DB_SSL_CA = 'test-ca';
+  assert.deepEqual(database.connectionOptions().ssl, { rejectUnauthorized: true, ca: 'test-ca' });
+  process.env = original;
 });
 
 test('CRUD preserves the existing store interface and safe IDs', async () => {
@@ -94,6 +107,20 @@ test('transactions commit atomically and restore cache on rollback', async () =>
   assert.equal(failing.state.tasks.length, 0);
 });
 
+test('failed queued writes restore cache and later writes can succeed', async () => {
+  const adapter = memoryAdapter({ failTransactions: true });
+  await store.initialize({ adapter, force: true });
+  store.create('tasks', { title: 'Must disappear' }, 'task');
+  await assert.rejects(store.flush(), /transaction failed/);
+  assert.equal(store.list('tasks').length, 0);
+  assert.equal(adapter.state.tasks.length, 0);
+
+  const recovered = store.create('tasks', { title: 'Recovered' }, 'task');
+  await store.flush();
+  assert.equal(store.get('tasks', recovered.id).title, 'Recovered');
+  assert.equal(adapter.state.tasks.length, 1);
+});
+
 test('events reject update and delete operations', async () => {
   await store.initialize({ adapter: memoryAdapter(), force: true });
   const event = store.create('events', { action: 'created' }, 'evt');
@@ -128,6 +155,16 @@ test('production startup requires a database while development can use JSON fall
   process.env = original;
 });
 
+test('store itself prohibits every production JSON fallback path', async () => {
+  const original = { ...process.env };
+  process.env.NODE_ENV = 'production'; delete process.env.DATABASE_URL;
+  store.resetForTests();
+  assert.throws(() => store.list('goals'), /JSON persistence is prohibited|JSON fallback is prohibited/);
+  await assert.rejects(store.initialize({ force: true }), /JSON persistence is prohibited|JSON fallback is prohibited/);
+  assert.throws(database.requireConfigured, /DATABASE_URL is required/);
+  process.env = original;
+});
+
 test('application preparation checks database health before serving', async () => {
   const original = { ...process.env };
   process.env.NODE_ENV = 'production'; process.env.ADMIN_KEY = 'a'.repeat(32); process.env.VIDEO_ALLOWED_HOSTS = 'video.example.com'; process.env.DATABASE_URL = 'postgres://test.invalid/kit';
@@ -139,13 +176,39 @@ test('application preparation checks database health before serving', async () =
   process.env = original;
 });
 
-test('real PostgreSQL migrations, CRUD, transactions, concurrency, and rollback', { skip: !process.env.TEST_DATABASE_URL }, async () => {
+test('graceful shutdown stops accepting requests, drains writes, and closes PostgreSQL', async () => {
+  shutdown.resetForTests();
+  const originalFlush = store.flush;
+  const originalClose = database.close;
+  const calls = [];
+  store.flush = async () => { calls.push('flush'); };
+  database.close = async () => { calls.push('database'); };
+  const server = { close(callback) { calls.push('server'); callback(); } };
+  try {
+    await shutdown.gracefulShutdown(server, 'SIGTERM');
+    assert.equal(calls[0], 'server');
+    assert.ok(calls.includes('flush'));
+    assert.equal(calls.at(-1), 'database');
+  } finally {
+    store.flush = originalFlush;
+    database.close = originalClose;
+    shutdown.resetForTests();
+  }
+});
+
+test('real PostgreSQL migrations, CRUD, import, concurrency, locking, and safe rollback', { skip: !process.env.TEST_DATABASE_URL }, async () => {
+  const original = { ...process.env };
   process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;
   process.env.DB_SSL = 'false';
   store.resetForTests();
+  await database.close();
   await database.migrate('down', 0);
-  await database.migrate('up');
+  await Promise.all([database.migrate('up'), database.migrate('up')]);
+  const versionsAfterCompetingMigrations = await database.connect()`SELECT version FROM schema_migrations`;
+  assert.deepEqual(versionsAfterCompetingMigrations.map(row => Number(row.version)), [1]);
   await store.initialize({ force: true });
+  const [lock] = await database.connect()`SELECT pg_try_advisory_lock(744113002) AS acquired`;
+  assert.equal(lock.acquired, false);
 
   const goal = store.create('goals', { title: 'PostgreSQL integration' }, 'goal');
   await store.flush();
@@ -163,9 +226,45 @@ test('real PostgreSQL migrations, CRUD, transactions, concurrency, and rollback'
   assert.equal(store.list('tasks').length, 25);
   await assert.rejects(database.connect().unsafe('UPDATE events SET data = data'), /immutable/);
 
-  await database.migrate('down', 0);
+  const importedAt = '2025-01-01T00:00:00.000Z';
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'kit-pg-import-'));
+  fs.writeFileSync(path.join(dir, 'goals.json'), JSON.stringify([{ id: 'goal_pg_import', title: 'Imported once', created_at: importedAt, updated_at: importedAt }]));
+  assert.deepEqual(await importDirectory(dir), { goals: 1 });
+  assert.deepEqual(await importDirectory(dir), { goals: 0 });
+  const [imported] = await database.connect()`SELECT id, created_at, updated_at FROM goals WHERE id = 'goal_pg_import'`;
+  assert.equal(imported.id, 'goal_pg_import');
+  assert.equal(new Date(imported.created_at).toISOString(), importedAt);
+  assert.equal(new Date(imported.updated_at).toISOString(), importedAt);
+  fs.rmSync(dir, { recursive: true, force: true });
+
+  const competing = store.create('tasks', { title: 'Compete' }, 'task');
+  await store.flush();
+  const [before] = await database.connect()`SELECT updated_at FROM tasks WHERE id = ${competing.id}`;
+  const first = await database.connect().unsafe('UPDATE tasks SET data = $2::jsonb, updated_at = now() WHERE id = $1 AND updated_at = $3', [competing.id, JSON.stringify({ title: 'winner' }), before.updated_at]);
+  const second = await database.connect().unsafe('UPDATE tasks SET data = $2::jsonb, updated_at = now() WHERE id = $1 AND updated_at = $3', [competing.id, JSON.stringify({ title: 'loser' }), before.updated_at]);
+  assert.equal(first.count, 1);
+  assert.equal(second.count, 0);
+  assert.equal(store.remove('tasks', competing.id), true);
+  await assert.rejects(store.flush(), /Concurrent delete rejected/);
+  assert.equal(store.get('tasks', competing.id).id, competing.id);
+  const recovery = store.create('tasks', { title: 'Write after conflict' }, 'task');
+  await store.flush();
+  assert.equal(store.get('tasks', recovery.id).title, 'Write after conflict');
+
+  await assert.rejects(database.connect().begin(async tx => {
+    await tx`INSERT INTO goals (id, data) VALUES ('rolled_back', '{"title":"no"}'::jsonb)`;
+    throw new Error('force rollback');
+  }), /force rollback/);
+  const rolledBack = await database.connect()`SELECT id FROM goals WHERE id = 'rolled_back'`;
+  assert.equal(rolledBack.length, 0);
+
+  delete process.env.ALLOW_DESTRUCTIVE_DB_ROLLBACK;
+  process.env.NODE_ENV = 'production';
+  await assert.rejects(database.migrate('down'), /requires ALLOW_DESTRUCTIVE_DB_ROLLBACK/);
+  process.env.NODE_ENV = 'test';
+  await database.migrate('down');
   const versions = await database.connect()`SELECT version FROM schema_migrations`;
   assert.equal(versions.length, 0);
   await database.close();
-  delete process.env.DATABASE_URL;
+  process.env = original;
 });
