@@ -20,6 +20,9 @@ function assertStartupSecurity() {
   if (process.env.NODE_ENV === 'production' && !String(process.env.VIDEO_ALLOWED_HOSTS || '').trim()) {
     throw new Error('Refusing to start: VIDEO_ALLOWED_HOSTS is required when NODE_ENV=production.');
   }
+  if (process.env.NODE_ENV === 'production' && !process.env.DATABASE_URL) {
+    throw new Error('Refusing to start: DATABASE_URL is required when NODE_ENV=production.');
+  }
   if (!process.env.ADMIN_KEY && !insecureDevelopmentMode()) {
     throw new Error('Refusing to start without ADMIN_KEY. For local-only development, explicitly set ALLOW_INSECURE_DEV_AUTH=true.');
   }

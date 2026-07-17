@@ -145,6 +145,7 @@ async function handleRpc(msg) {
     if (!tool) return rpcError(id, -32602, 'Unknown tool: ' + (params && params.name));
     try {
       const data = await tool.run((params && params.arguments) || {});
+      await store.flush();
       return toolResult(id, data);
     } catch (e) {
       return { jsonrpc: '2.0', id, result: { isError: true, content: [{ type: 'text', text: 'Error: ' + (e.message || String(e)) }] } };

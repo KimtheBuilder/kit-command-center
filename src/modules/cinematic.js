@@ -58,7 +58,7 @@ function addScene({ project_id, order, hook, visual_direction, caption, cta, pro
 // Providers are config records; render jobs reference them. Actual API calls are
 // made by the worker/connector holding that provider's key (never stored here in V1).
 function registerProvider({ name, kind, base_url, notes, actor }) {
-  const prov = store.create('assets', {
+  const prov = store.create('providers', {
     record_type: 'provider', name, kind: kind || 'video',  // video | image | audio
     base_url: base_url || null, notes: notes || '', status: 'configured_no_key'
   }, 'prv');
