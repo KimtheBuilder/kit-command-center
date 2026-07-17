@@ -9,6 +9,9 @@ const { seed } = require('./src/seed');
 const { assertStartupSecurity, errorResponse, securityLog } = require('./src/security');
 const editor = require('./src/modules/editor');
 const { mountMedia } = require('./src/media');
+const store = require('./src/store');
+const { prepare } = require('./src/startup');
+const { installSignalHandlers } = require('./src/shutdown');
 
 function createApp() {
   assertStartupSecurity();
@@ -38,6 +41,10 @@ function createApp() {
   mountMedia(app, editor.MEDIA_ROOT);
   app.use(express.static(path.join(__dirname, 'public')));
   app.get('/health', (req, res) => res.json({ ok: true, service: 'kit-command-center' }));
+  app.get('/ready', async (req, res) => {
+    try { await store.health(); return res.json({ ok: true, service: 'kit-command-center', ready: true }); }
+    catch { return res.status(503).json({ ok: false, service: 'kit-command-center', ready: false }); }
+  });
   app.use((req, res) => res.status(404).json({ ok: false, error: 'Not found.' }));
   app.use((error, req, res, next) => {
     if (res.headersSent) return next(error);
@@ -47,19 +54,22 @@ function createApp() {
     return errorResponse(res, error, { method: req.method, path: req.originalUrl });
   });
 
-  seed();
+  if (!process.env.DATABASE_URL) seed();
   return app;
 }
 
-function start() {
+async function start() {
+  await prepare();
   const app = createApp();
   if (require('./src/ghl').startAutoSync()) console.log('GHL auto-sync ON — leads & pipeline every 12h');
   const port = Number(process.env.PORT || 3000);
-  return app.listen(port, () => {
+  const server = app.listen(port, () => {
     console.log('KIT Command Center running on port ' + port);
     securityLog('server_started', { port, environment: process.env.NODE_ENV || 'development' });
   });
+  installSignalHandlers(server);
+  return server;
 }
 
-if (require.main === module) start();
+if (require.main === module) start().catch(error => { console.error('Startup failed: ' + error.message); process.exitCode = 1; });
 module.exports = { createApp, start };

@@ -6,6 +6,8 @@ const events = require('./events');
 
 const BASE = 'https://services.leadconnectorhq.com';
 const VERSION = '2021-07-28';
+let initialSyncTimer;
+let intervalTimer;
 
 function enabled() { return !!(process.env.GHL_API_KEY && process.env.GHL_LOCATION_ID); }
 
@@ -88,9 +90,17 @@ async function status() {
 // Every 12 hours, dashboards feed themselves.
 function startAutoSync() {
   if (!enabled()) return false;
-  setTimeout(() => sync('ghl_auto').catch(() => {}), 20000); // first pull shortly after boot
-  setInterval(() => sync('ghl_auto').catch(() => {}), 12 * 3600 * 1000);
+  if (initialSyncTimer || intervalTimer) return true;
+  initialSyncTimer = setTimeout(() => sync('ghl_auto').catch(() => {}), 20000); // first pull shortly after boot
+  intervalTimer = setInterval(() => sync('ghl_auto').catch(() => {}), 12 * 3600 * 1000);
   return true;
 }
 
-module.exports = { enabled, sync, status, newLeads, pipelineSnapshot, lastSnapshot, startAutoSync };
+function stopAutoSync() {
+  if (initialSyncTimer) clearTimeout(initialSyncTimer);
+  if (intervalTimer) clearInterval(intervalTimer);
+  initialSyncTimer = null;
+  intervalTimer = null;
+}
+
+module.exports = { enabled, sync, status, newLeads, pipelineSnapshot, lastSnapshot, startAutoSync, stopAutoSync };

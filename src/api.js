@@ -24,7 +24,7 @@ router.use(validateMutationBody);
 voice.mount(router); // behind the admin key — TTS spends ElevenLabs credits
 
 const ok = (res, data) => res.json({ ok: true, data });
-const wrap = fn => async (req, res) => { try { ok(res, await fn(req)); } catch (e) { errorResponse(res, e, { method: req.method, path: req.originalUrl }); } };
+const wrap = fn => async (req, res) => { try { const data = await fn(req); await store.flush(); ok(res, data); } catch (e) { errorResponse(res, e, { method: req.method, path: req.originalUrl }); } };
 
 // ---- KTB Brand Kit (complete design system, machine-readable)
 const brandKit = require('./brandKit');
@@ -33,10 +33,10 @@ router.get('/brand', (req, res) => res.json({ ok: true, data: brandKit.BRAND }))
 // ---- KTB Agent Stack bridge diagnostics
 const stackBridge = require('./stackBridge');
 router.get('/stack/status', async (req, res) => { res.json({ ok: true, data: await stackBridge.status() }); });
-router.get('/diagnostics', wrap(() => ({
+router.get('/diagnostics', wrap(async () => ({
   service: 'kit-command-center',
   environment: process.env.NODE_ENV || 'development',
-  storage_writable: (() => { try { require('fs').accessSync(store.DATA_DIR, require('fs').constants.W_OK); return true; } catch { return false; } })(),
+  persistence: await store.health(),
   integrations: {
     brain: require('./brain').enabled(), voice: require('./voice').enabled(),
     agent_stack: require('./stackBridge').enabled(), zoom: require('./zoom').enabled(), ghl: require('./ghl').enabled()
@@ -59,10 +59,12 @@ router.post('/approvals/:id/decide', async (req, res) => {
   events.log(req.securityActor, 'approval.attempted', 'approval', id, decision || 'missing_decision');
   securityLog('approval_attempt', { approval_id: id, decision, authenticated_owner: req.authenticatedOwner, ip: req.ip });
   try {
+    await store.flush();
     if (!req.authenticatedOwner) throw new PublicError('Only the authenticated owner can decide approvals.', 403);
-    ok(res, cc.decideApproval(id, decision, req.body.note, req.securityActor));
+    ok(res, await store.transaction(() => cc.decideApproval(id, decision, req.body.note, req.securityActor)));
   } catch (error) {
     events.log(req.securityActor, 'approval.attempt_failed', 'approval', id, error.message);
+    await store.flush().catch(() => {});
     errorResponse(res, error, { method: req.method, path: req.originalUrl });
   }
 });
