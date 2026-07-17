@@ -27,6 +27,7 @@ temp/
 # Local JSON persistence (keep committed seed fixtures)
 data/*.local.json
 data/local/
+data/runtime/
 
 # Coverage and editor metadata
 coverage/

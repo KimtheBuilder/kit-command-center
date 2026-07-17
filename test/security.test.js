@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { Readable } = require('stream');
 
 const DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'kit-security-test-'));
 process.env.NODE_ENV = 'test';
@@ -43,13 +44,19 @@ test('production refuses to start without ADMIN_KEY and dev bypass is explicit',
   const oldEnv = process.env.NODE_ENV;
   const oldKey = process.env.ADMIN_KEY;
   const oldBypass = process.env.ALLOW_INSECURE_DEV_AUTH;
-  process.env.NODE_ENV = 'production'; delete process.env.ADMIN_KEY;
-  assert.throws(assertStartupSecurity, /ADMIN_KEY is required/);
-  process.env.NODE_ENV = 'development'; delete process.env.ALLOW_INSECURE_DEV_AUTH;
+  const oldHosts = process.env.VIDEO_ALLOWED_HOSTS;
+  process.env.NODE_ENV = 'production'; process.env.VIDEO_ALLOWED_HOSTS = 'video.example.com'; delete process.env.ADMIN_KEY;
+  assert.throws(assertStartupSecurity, /ADMIN_KEY must be at least 32 characters/);
+  process.env.ADMIN_KEY = 'short';
+  assert.throws(assertStartupSecurity, /ADMIN_KEY must be at least 32 characters/);
+  process.env.ADMIN_KEY = 'a'.repeat(32); delete process.env.VIDEO_ALLOWED_HOSTS;
+  assert.throws(assertStartupSecurity, /VIDEO_ALLOWED_HOSTS is required/);
+  process.env.NODE_ENV = 'development'; delete process.env.ADMIN_KEY; delete process.env.ALLOW_INSECURE_DEV_AUTH;
   assert.throws(assertStartupSecurity, /explicitly set/);
   process.env.ALLOW_INSECURE_DEV_AUTH = 'true';
   assert.doesNotThrow(assertStartupSecurity);
   process.env.NODE_ENV = oldEnv; process.env.ADMIN_KEY = oldKey;
+  if (oldHosts === undefined) delete process.env.VIDEO_ALLOWED_HOSTS; else process.env.VIDEO_ALLOWED_HOSTS = oldHosts;
   if (oldBypass === undefined) delete process.env.ALLOW_INSECURE_DEV_AUTH; else process.env.ALLOW_INSECURE_DEV_AUTH = oldBypass;
 });
 
@@ -88,6 +95,20 @@ test('API rate limiting enforces configured request ceilings', async () => {
   process.env.API_RATE_LIMIT = '100';
 });
 
+test('proxy trust is bounded to the direct Render proxy hop', async () => {
+  const oldHops = process.env.TRUST_PROXY_HOPS;
+  process.env.TRUST_PROXY_HOPS = '1'; process.env.API_RATE_LIMIT = '1';
+  const limitedServer = createApp().listen(0, '127.0.0.1');
+  await new Promise(resolve => limitedServer.once('listening', resolve));
+  const limitedBase = 'http://127.0.0.1:' + limitedServer.address().port;
+  const common = { 'x-admin-key': process.env.ADMIN_KEY };
+  assert.equal((await fetch(limitedBase + '/api/summary', { headers: { ...common, 'x-forwarded-for': '198.51.100.10, 203.0.113.7' } })).status, 200);
+  assert.equal((await fetch(limitedBase + '/api/summary', { headers: { ...common, 'x-forwarded-for': '198.51.100.11, 203.0.113.7' } })).status, 429);
+  await new Promise(resolve => limitedServer.close(resolve));
+  process.env.API_RATE_LIMIT = '100';
+  if (oldHops === undefined) delete process.env.TRUST_PROXY_HOPS; else process.env.TRUST_PROXY_HOPS = oldHops;
+});
+
 test('structured security logs redact secret-like fields', () => {
   const original = console.log;
   let line = '';
@@ -110,6 +131,11 @@ test('mutation bodies require JSON objects and required fields', async () => {
   const invalid = await request('/api/tasks', { method: 'POST', headers: { 'x-admin-key': process.env.ADMIN_KEY, 'content-type': 'application/json' }, body: '{' });
   assert.equal(invalid.status, 400);
   assert.deepEqual(await invalid.json(), { ok: false, error: 'Invalid JSON body.' });
+});
+
+test('bodyless GHL sync reaches the route without a JSON validation error', async () => {
+  const response = await request('/api/ghl/sync', { method: 'POST', headers: { 'x-admin-key': process.env.ADMIN_KEY } });
+  assert.notEqual(response.status, 415);
 });
 
 test('unexpected internal errors are sanitized', async () => {
@@ -149,6 +175,12 @@ test('media requires a valid unexpired signature and blocks traversal', async ()
   assert.equal(response.status, 200);
   assert.equal(await response.text(), 'video');
   assert.equal(response.headers.get('cache-control'), 'private, no-store');
+
+  const outside = path.join(DATA_DIR, 'outside.mp4');
+  fs.writeFileSync(outside, 'secret');
+  const link = path.join(dir, 'linked.mp4');
+  fs.symlinkSync(outside, link);
+  assert.equal((await request(media.signedUrl(job, 'linked.mp4', 60))).status, 404);
 });
 
 test('MCP DELETE validates the path token', async () => {
@@ -172,49 +204,76 @@ test('allowed-host policy is enforced', async () => {
 });
 
 test('connection timeout aborts stalled remote requests', async () => {
-  const originalFetch = global.fetch;
   process.env.VIDEO_CONNECT_TIMEOUT_MS = '10';
-  global.fetch = async (url, options) => new Promise((resolve, reject) => options.signal.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' }))));
-  try { await assert.rejects(remote.fetchFollowingSafeRedirects('https://93.184.216.34/video.mp4'), /timed out/); }
-  finally { global.fetch = originalFetch; delete process.env.VIDEO_CONNECT_TIMEOUT_MS; }
+  const stalled = async (target, headers, signal) => new Promise((resolve, reject) => signal.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' }))));
+  try { await assert.rejects(remote.fetchFollowingSafeRedirects('https://93.184.216.34/video.mp4', {}, stalled), /timed out/); }
+  finally { delete process.env.VIDEO_CONNECT_TIMEOUT_MS; }
 });
 
 test('total download timeout aborts stalled response bodies and removes partial files', async () => {
-  const originalFetch = global.fetch;
   const target = path.join(DATA_DIR, 'timed-out.mp4');
   process.env.VIDEO_DOWNLOAD_TIMEOUT_MS = '10';
-  global.fetch = async (url, options) => {
-    const stream = new ReadableStream({
-      start(controller) {
-        controller.enqueue(new TextEncoder().encode('12'));
-        options.signal.addEventListener('abort', () => controller.error(Object.assign(new Error('aborted'), { name: 'AbortError' })));
-      }
-    });
-    return new Response(stream, { status: 200, headers: { 'content-type': 'video/mp4' } });
+  const stalled = async (resolved, headers, signal) => {
+    let sent = false;
+    const stream = new Readable({ read() { if (!sent) { sent = true; this.push(Buffer.from('12')); } } });
+    signal.addEventListener('abort', () => stream.destroy(Object.assign(new Error('aborted'), { name: 'AbortError' })));
+    return { ok: true, status: 200, headers: { get: name => name === 'content-type' ? 'video/mp4' : null }, body: stream };
   };
-  try { await assert.rejects(remote.downloadToFile('https://93.184.216.34/video.mp4', target)); }
-  finally { global.fetch = originalFetch; delete process.env.VIDEO_DOWNLOAD_TIMEOUT_MS; }
+  try { await assert.rejects(remote.downloadToFile('https://93.184.216.34/video.mp4', target, { requestImpl: stalled })); }
+  finally { delete process.env.VIDEO_DOWNLOAD_TIMEOUT_MS; }
   assert.equal(fs.existsSync(target), false);
 });
 
 test('redirect destinations are revalidated', async () => {
-  const originalFetch = global.fetch;
-  global.fetch = async () => new Response(null, { status: 302, headers: { location: 'http://127.0.0.1/private.mp4' } });
-  try { await assert.rejects(remote.fetchFollowingSafeRedirects('https://93.184.216.34/video.mp4'), /private or reserved/); }
-  finally { global.fetch = originalFetch; }
+  const redirect = async () => ({ status: 302, headers: { get: name => name === 'location' ? 'http://127.0.0.1/private.mp4' : null }, body: null });
+  await assert.rejects(remote.fetchFollowingSafeRedirects('https://93.184.216.34/video.mp4', {}, redirect), /private or reserved/);
+});
+
+test('authenticated downloads reject cross-origin redirects without forwarding credentials', async () => {
+  const calls = [];
+  const redirect = async (target, headers) => {
+    calls.push({ origin: target.url.origin, headers: { ...headers } });
+    return { status: 302, headers: { get: name => name === 'location' ? 'https://93.184.216.35/video.mp4' : null }, body: null };
+  };
+  await assert.rejects(remote.fetchFollowingSafeRedirects('https://93.184.216.34/video.mp4', {
+    Authorization: 'Bearer secret', Cookie: 'session=secret', 'Proxy-Authorization': 'Basic secret'
+  }, redirect), /may not redirect/);
+  assert.equal(calls.length, 1);
+});
+
+test('outbound request uses the validated address through a pinned lookup', async () => {
+  const target = await remote.resolveRemoteTarget('https://93.184.216.34/video.mp4');
+  assert.equal(target.address, '93.184.216.34');
+  const options = remote.pinnedRequestOptions(target, {}, new AbortController().signal);
+  let lookupResult;
+  options.lookup('attacker-controlled.example', {}, (error, address, family) => { lookupResult = { error, address, family }; });
+  assert.deepEqual(lookupResult, { error: null, address: '93.184.216.34', family: 4 });
+  assert.equal(options.autoSelectFamily, false);
 });
 
 test('download validates content type and size and removes partial files', async () => {
-  const originalFetch = global.fetch;
   const target = path.join(DATA_DIR, 'bad-download.mp4');
   process.env.VIDEO_MAX_BYTES = '4';
-  global.fetch = async () => new Response('12345', { status: 200, headers: { 'content-type': 'video/mp4' } });
-  try { await assert.rejects(remote.downloadToFile('https://93.184.216.34/video.mp4', target), /maximum allowed size/); }
-  finally { global.fetch = originalFetch; delete process.env.VIDEO_MAX_BYTES; }
+  const response = (body, type) => async () => ({ ok: true, status: 200, headers: { get: name => name === 'content-type' ? type : null }, body: Readable.from([Buffer.from(body)]) });
+  try { await assert.rejects(remote.downloadToFile('https://93.184.216.34/video.mp4', target, { requestImpl: response('12345', 'video/mp4') }), /maximum allowed size/); }
+  finally { delete process.env.VIDEO_MAX_BYTES; }
   assert.equal(fs.existsSync(target), false);
 
-  global.fetch = async () => new Response('html', { status: 200, headers: { 'content-type': 'text/html' } });
-  try { await assert.rejects(remote.downloadToFile('https://93.184.216.34/video.mp4', target), /content type/); }
-  finally { global.fetch = originalFetch; }
+  await assert.rejects(remote.downloadToFile('https://93.184.216.34/video.mp4', target, { requestImpl: response('html', 'text/html') }), /content type/);
   assert.equal(fs.existsSync(target), false);
+
+  await assert.rejects(remote.downloadToFile('https://93.184.216.34/video.mp4', target, { requestImpl: response('not video', 'video/mp4') }), /signature/);
+  assert.equal(fs.existsSync(target), false);
+
+  await assert.rejects(remote.downloadToFile('https://93.184.216.34/video.mp4', target, { allowedTypes: ['video/', 'application/octet-stream'], requestImpl: response('not video', 'application/octet-stream') }), /explicitly allowed host/);
+
+  process.env.VIDEO_ALLOWED_HOSTS = '93.184.216.34';
+  const validMp4 = Buffer.concat([Buffer.alloc(4), Buffer.from('ftypisom'), Buffer.alloc(4)]);
+  try {
+    await remote.downloadToFile('https://93.184.216.34/video.mp4', target, { allowedTypes: ['video/', 'application/octet-stream'], requestImpl: response(validMp4, 'application/octet-stream') });
+    assert.equal(fs.existsSync(target), true);
+  } finally {
+    delete process.env.VIDEO_ALLOWED_HOSTS;
+    fs.rmSync(target, { force: true });
+  }
 });

@@ -19,6 +19,7 @@ function inspect(value, depth) {
 
 function validateMutationBody(req, res, next) {
   if (!['POST', 'PUT', 'PATCH'].includes(req.method)) return next();
+  if (req.method === 'POST' && req.path === '/ghl/sync' && !req.get('content-type')) return next();
   if (!req.is('application/json')) return next(new PublicError('Content-Type must be application/json.', 415));
   if (!req.body || Array.isArray(req.body) || typeof req.body !== 'object') return next(new PublicError('JSON body must be an object.', 400));
   try { inspect(req.body, 0); return next(); } catch (error) { return next(error); }

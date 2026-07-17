@@ -14,8 +14,11 @@ function insecureDevelopmentMode() {
 }
 
 function assertStartupSecurity() {
-  if (process.env.NODE_ENV === 'production' && !process.env.ADMIN_KEY) {
-    throw new Error('Refusing to start: ADMIN_KEY is required when NODE_ENV=production.');
+  if (process.env.NODE_ENV === 'production' && String(process.env.ADMIN_KEY || '').trim().length < 32) {
+    throw new Error('Refusing to start: ADMIN_KEY must be at least 32 characters when NODE_ENV=production.');
+  }
+  if (process.env.NODE_ENV === 'production' && !String(process.env.VIDEO_ALLOWED_HOSTS || '').trim()) {
+    throw new Error('Refusing to start: VIDEO_ALLOWED_HOSTS is required when NODE_ENV=production.');
   }
   if (!process.env.ADMIN_KEY && !insecureDevelopmentMode()) {
     throw new Error('Refusing to start without ADMIN_KEY. For local-only development, explicitly set ALLOW_INSECURE_DEV_AUTH=true.');

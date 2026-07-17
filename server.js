@@ -13,6 +13,9 @@ const { mountMedia } = require('./src/media');
 function createApp() {
   assertStartupSecurity();
   const app = express();
+  const proxyHops = process.env.TRUST_PROXY_HOPS === undefined ? (process.env.NODE_ENV === 'production' ? 1 : 0) : Number(process.env.TRUST_PROXY_HOPS);
+  if (!Number.isInteger(proxyHops) || proxyHops < 0 || proxyHops > 2) throw new Error('TRUST_PROXY_HOPS must be an integer from 0 to 2.');
+  app.set('trust proxy', proxyHops);
   app.disable('x-powered-by');
   app.use(helmet({
     contentSecurityPolicy: {

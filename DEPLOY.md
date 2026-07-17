@@ -17,24 +17,29 @@ Your JARVIS-style business operating system. Plain Node.js — **no build step, 
    - **Build Command:** `npm ci`
    - **Start Command:** `npm start`
    - **Instance:** free tier works for V1
-3. Environment variables:
-   - `MCP_PATH_TOKEN` = a long random string you invent
-   - `ADMIN_KEY` = a second long, random secret for the dashboard. **Required in production; the service refuses to start without it.** The UI prompts once and stores it in the browser.
-   - `DATA_DIR` = `/var/data` **only if** you add a persistent disk (recommended: Disks → Add Disk → mount path `/var/data`). Without a disk, data resets on redeploys.
+3. Required production security and persistence variables:
+   - `MCP_PATH_TOKEN` = a long random string you invent.
+   - `ADMIN_KEY` = a different random secret of at least 32 characters. **Required in production; the service refuses to start without it.** The UI prompts once and stores it in the browser.
+   - `VIDEO_ALLOWED_HOSTS` = comma-separated exact hostnames/domains permitted as video sources, including the Zoom download hosts used by your account. **Required and fail-closed in production.** Redirects are checked against the same list.
+   - `DATA_DIR` = `/var/data`. Add a Render persistent disk mounted at `/var/data`; otherwise operational data is lost on redeploy.
+   - `TRUST_PROXY_HOPS` = `1` on Render. Do not increase it unless another trusted proxy is deliberately added.
+   - Optional tuning: `API_RATE_LIMIT` (default `300` per 15 minutes) and `MCP_RATE_LIMIT` (default `120` per minute).
+
+4. Optional integration variables:
    - `ANTHROPIC_API_KEY` = your Claude API key (console.anthropic.com) — turns on the KIT Brain. Optional: `CLAUDE_MODEL` (default `claude-sonnet-4-6`).
    - `ELEVENLABS_API_KEY` = your ElevenLabs key — gives KIT its voice. Optional: `ELEVENLABS_VOICE_ID` (pick a voice in ElevenLabs and paste its ID) and `ELEVENLABS_MODEL` (default `eleven_turbo_v2_5`).
    - `KTB_STACK_MCP_URL` = your Agent Stack MCP URL — plugs your six KTB Agent Stack agents INSIDE KIT.
 
-Without these keys everything still runs — the brain falls back to the rule engine, browser speech covers the voice, and the Agent Stack simply stays a separate connector until you bridge it.
+Without the optional integration keys, the core command center still runs: the brain falls back to the rule engine, browser speech covers voice, and disconnected integrations remain disabled. The required production variables above cannot be omitted.
 
 For local-only development without an admin key, explicitly set `ALLOW_INSECURE_DEV_AUTH=true` while `NODE_ENV` is not `production`. Never use that flag on Render. Approval decisions remain owner-authenticated and are unavailable through the insecure development bypass.
 
-Optional video-ingestion controls:
-- `VIDEO_ALLOWED_HOSTS` — comma-separated exact hostnames/domains allowed as direct video sources. Leave blank only if arbitrary public hosts are required.
+Additional video-ingestion controls:
+- In development only, `VIDEO_ALLOWED_HOSTS` may be blank to permit arbitrary public hosts. Production refuses to start with an empty allowlist.
 - `VIDEO_MAX_BYTES` — maximum download size; defaults to 2 GiB.
 - `VIDEO_CONNECT_TIMEOUT_MS` — DNS/connection timeout; defaults to 15 seconds.
 - `VIDEO_DOWNLOAD_TIMEOUT_MS` — total body download timeout; defaults to 15 minutes.
-4. Deploy. Health check: `https://YOUR-SERVICE.onrender.com/health`
+5. Deploy. Health check: `https://YOUR-SERVICE.onrender.com/health`
    Authenticated operational diagnostics: `GET /api/diagnostics` with header `x-admin-key: YOUR_ADMIN_KEY`.
 
 ## 3. Connect Claude
